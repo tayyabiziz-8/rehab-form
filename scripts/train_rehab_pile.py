@@ -23,6 +23,15 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+def to_3d(X):
+    X = np.asarray(X, dtype=np.float32)
+    if X.ndim == 4:  # assumed (n, time, joints, dims) -> (n, joints*dims, time)
+        n, t, j, d = X.shape
+        X = X.transpose(0, 2, 3, 1).reshape(n, j * d, t)
+    if X.ndim != 3:
+        raise ValueError(f"Unexpected X shape {X.shape}")
+    return X
+
 
 def load_fold(name: str, fold: int, extract_path: str | None):
     from aeon.datasets import load_rehab_pile_dataset
@@ -30,6 +39,12 @@ def load_fold(name: str, fold: int, extract_path: str | None):
     kw = {"extract_path": extract_path} if extract_path else {}
     X_tr, y_tr = load_rehab_pile_dataset(name, split="train", fold=fold, **kw)
     X_te, y_te = load_rehab_pile_dataset(name, split="test", fold=fold, **kw)
+    # Rehab-Pile stores labels as column vectors (n, 1); flatten them.
+    y_tr, y_te = np.asarray(y_tr).ravel(), np.asarray(y_te).ravel()
+    X_tr, X_te = to_3d(X_tr), to_3d(X_te)
+    if fold == 0:
+        print(f"X_train {X_tr.shape}  X_test {X_te.shape}  "
+              f"classes {sorted(set(y_tr.tolist()))}")
     return X_tr, y_tr, X_te, y_te
 
 
@@ -61,6 +76,7 @@ def train_one(X_tr, y_tr, X_te, y_te, epochs: int, batch: int, lr: float, seed: 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = FCN(Xtr.shape[1], len(enc.classes_)).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
+    sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=50, min_lr=1e-4)
     loss_fn = nn.CrossEntropyLoss()
 
     best_loss, best_state = float("inf"), None
@@ -77,6 +93,7 @@ def train_one(X_tr, y_tr, X_te, y_te, epochs: int, batch: int, lr: float, seed: 
             opt.step()
             total += loss.item() * len(idx)
         epoch_loss = total / len(Xtr)
+        sched.step(epoch_loss)
         # Model selection on TRAIN loss only, so the test fold stays untouched.
         if epoch_loss < best_loss:
             best_loss = epoch_loss
