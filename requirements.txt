@@ -1,0 +1,17 @@
+# Core
+numpy>=1.26
+scipy>=1.11
+pandas>=2.0
+scikit-learn>=1.3
+tqdm>=4.66
+
+# Rehab-Pile loader (load_rehab_pile_dataset). Needs a recent aeon release;
+# if the import fails, upgrade aeon or use the deep-rehab-pile package instead.
+aeon>=1.4
+
+# Training
+torch>=2.2
+
+# Pose extraction from video
+mediapipe>=0.10.14
+opencv-python>=4.9
