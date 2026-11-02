@@ -103,6 +103,11 @@ def train_one(X_tr, y_tr, X_te, y_te, epochs: int, batch: int, lr: float, seed: 
     model.eval()
     with torch.no_grad():
         pred = model(Xte.to(device)).argmax(dim=1).cpu().numpy()
+    maj = np.bincount(ytr).argmax()
+    maj_acc = accuracy_score(yte, np.full_like(yte, maj))
+    print(f"   test labels {np.bincount(yte[yte >= 0], minlength=len(enc.classes_))}  "
+          f"predicted {np.bincount(pred, minlength=len(enc.classes_))}  "
+          f"majority-baseline acc={maj_acc:.3f}")
     return accuracy_score(yte, pred), balanced_accuracy_score(yte, pred)
 
 
