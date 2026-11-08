@@ -25,6 +25,13 @@ Use Python 3.10–3.12. MediaPipe wheels lag behind new Python releases; if `pip
 | `scripts/train_rehab_pile.py` | Trains FCN on every fold of one Rehab-Pile dataset; prints accuracy and balanced accuracy, mean ± std | Compiles; not yet run |
 | `scripts/extract_mediapipe.py` | Runs MediaPipe Pose Landmarker on a folder of videos; saves `.npz` skeletons | Compiles; not yet run |
 | `scripts/check_datasets.py` | First look at a downloaded dataset; decodes IntelliRehabDS and UI-PRMD file names | Tested on fake folders |
+| `scripts/evaluate_keraal.py` | Computes BlazePose-vs-Vicon angle errors for all Group 3 recordings | Tested on Keraal Group 3 |
+| `scripts/compare_keraal_modalities.py` | Compares Kinect-vs-Vicon angle errors across Group 3 | Tested on Keraal Group 3 |
+| `scripts/align_keraal_modalities.py` | Estimates whole-frame Kinect-Vicon lag without changing baseline metrics | Tested on Keraal Group 3 |
+| `scripts/diagnose_keraal_mapping.py` | Tests a diagnostic Vicon left/right swap against Kinect without changing baseline mapping | Tested on Keraal Group 3 |
+| `scripts/evaluate_keraal_kinect.py` | Computes BlazePose-vs-Kinect angle errors using Kinect's anatomical joints as the primary reference | Tested on Keraal Group 3 |
+| `scripts/diagnose_shoulder_angles.py` | Compares candidate shoulder-angle definitions against Kinect without changing production metrics | Tested on Keraal Group 3 |
+| `docs/Keraal Group 3 - Initial Angle Evaluation.md` | Obsidian-compatible record of the initial phone-vs-Vicon evaluation | Preliminary results |
 | `data/README.md` | Where to download each dataset, licences, what may ship in the product | — |
 
 "Not yet run" means PyTorch, aeon and MediaPipe were not available where this was written. Expect small fixes on the first run.
@@ -45,6 +52,21 @@ python scripts/check_datasets.py data/ui_prmd --kind ui_prmd
 # 3. MediaPipe skeletons from video (Keraal, KIMORE)
 python scripts/extract_mediapipe.py --videos data/keraal/videos --out data/keraal/mediapipe \
     --model models/pose_landmarker_full.task --limit 10
+
+# 4. Aggregate phone-vs-Vicon angle errors
+python scripts/evaluate_keraal.py --root data/keraal
+
+# 5. Validate Kinect-vs-Vicon angle errors
+python scripts/compare_keraal_modalities.py --root data/keraal
+
+# 6. Diagnose whole-frame Kinect-vs-Vicon timing lag
+python scripts/align_keraal_modalities.py --root data/keraal
+
+# 7. Evaluate phone angles against the Kinect anatomical reference
+python scripts/evaluate_keraal_kinect.py --root data/keraal
+
+# 8. Diagnose alternative shoulder-angle definitions
+python scripts/diagnose_shoulder_angles.py --root data/keraal
 ```
 
 Download the `.task` model file from the MediaPipe Pose Landmarker guide into `models/` first.

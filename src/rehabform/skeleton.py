@@ -127,18 +127,29 @@ ANGLE_DEFS = {
 }
 
 
-def joint_angles(seq: np.ndarray) -> dict[str, np.ndarray]:
-    """Per-frame joint angles from a (T, 13, D) sequence. Returns name -> (T,)."""
+def joint_angles(
+    seq: np.ndarray,
+    vertical_axis: int = 1,
+    vertical_positive_up: bool = False,
+) -> dict[str, np.ndarray]:
+    """Per-frame joint angles from a (T, 13, D) sequence.
+
+    ``vertical_axis`` identifies the vertical coordinate. MediaPipe image
+    coordinates use y (1) with positive values down; Keraal Vicon and Kinect
+    coordinates use an upward-positive vertical axis.
+    """
+    if seq.ndim != 3 or not 0 <= vertical_axis < seq.shape[-1]:
+        raise ValueError(f"vertical_axis {vertical_axis} is invalid for shape {seq.shape}")
     out = {
         name: _angle(seq[:, J[a]], seq[:, J[v]], seq[:, J[c]])
         for name, (a, v, c) in ANGLE_DEFS.items()
     }
     # Trunk lean: angle between the hip->shoulder line and the vertical axis.
-    # Image y points down, so "up" is (0, -1[, 0]).
+    # Image y points down, so use the opposite reference direction by default.
     mid_hip = (seq[:, J["l_hip"]] + seq[:, J["r_hip"]]) / 2.0
     mid_sh = (seq[:, J["l_shoulder"]] + seq[:, J["r_shoulder"]]) / 2.0
     up = np.zeros(seq.shape[-1], dtype=np.float32)
-    up[1] = -1.0
+    up[vertical_axis] = 1.0 if vertical_positive_up else -1.0
     out["trunk_lean"] = _angle(mid_sh, mid_hip, mid_hip + up)
     return out
 
