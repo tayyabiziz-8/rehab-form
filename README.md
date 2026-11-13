@@ -31,7 +31,8 @@ Use Python 3.10–3.12. MediaPipe wheels lag behind new Python releases; if `pip
 | `scripts/diagnose_keraal_mapping.py` | Tests a diagnostic Vicon left/right swap against Kinect without changing baseline mapping | Tested on Keraal Group 3 |
 | `scripts/evaluate_keraal_kinect.py` | Computes BlazePose-vs-Kinect angle errors using Kinect's anatomical joints as the primary reference | Tested on Keraal Group 3 |
 | `scripts/diagnose_shoulder_angles.py` | Compares candidate shoulder-angle definitions against Kinect without changing production metrics | Vertical-axis fix 8 Nov; rerun needed |
-| `scripts/evaluate_keraal_vicon_offsetfree.py` | BlazePose vs Vicon on change from start pose and range of motion (cancels ART-target offsets); by exercise and participant | Tested on synthetic data; run on Group 3 |
+| `scripts/evaluate_keraal_vicon_offsetfree.py` | BlazePose vs Vicon on change from start pose and range of motion (cancels ART-target offsets); by exercise and participant; signed frontal-plane arm angle; skips recordings with mismatched lengths | Run on Group 3; signed angle added |
+| `scripts/overlay_blazepose.py` | Draws BlazePose (left orange, right blue) on 4 video frames per recording: start, Vicon arm peaks, largest disagreement | Tested on synthetic video |
 | `tests/test_keraal.py` | Checks BlazePose name ordering, pixel conversion and the vertical-axis fix on a synthetic Keraal folder | Passing |
 | `docs/Keraal Group 3 - Initial Angle Evaluation.md` | Obsidian-compatible record of the initial phone-vs-Vicon evaluation | Pre-fix results; rerun pending (see `CHANGES-2026-11-08.md`) |
 | `data/README.md` | Where to download each dataset, licences, what may ship in the product | — |
@@ -72,6 +73,9 @@ python scripts/diagnose_shoulder_angles.py --root data/keraal
 
 # 9. Offset-free phone-vs-Vicon (change from start pose, range of motion)
 python scripts/evaluate_keraal_vicon_offsetfree.py --root data/keraal
+
+# 10. See where phone pose fails: skeleton overlay on video frames
+python scripts/overlay_blazepose.py --root data/keraal --exercise ELK
 ```
 
 Download the `.task` model file from the MediaPipe Pose Landmarker guide into `models/` first.

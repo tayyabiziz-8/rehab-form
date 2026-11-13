@@ -19,6 +19,13 @@ Angles (degrees)
   elbow_l/r     elbow bend (0 = straight)
   trunk_lat     sideways lean (signed; BlazePose 2D only)
   trunk_rot     twist about the vertical axis (signed; BlazePose 3D only)
+  arm_abd_signed_l/r  arm angle in the body's frontal plane, SIGNED and unwrapped:
+                0 = arm down, +90 = out to the side, +180 = overhead, >180 =
+                past overhead, <0 = across the body. Same trunk-midline and
+                shoulder-line references for both systems, so no sign flip is
+                applied and a negative r means truly opposite motion.
+                (BlazePose 2D only; tests whether overhead failures come from
+                the unsigned angle folding back near 180 degrees.)
 
 BlazePose is loaded in pixel units (aspect-ratio corrected) and evaluated in
 two variants: "2d" (image x, y) and "3d" (adds BlazePose's relative depth).
@@ -71,6 +78,16 @@ def unwrap_deg(a: np.ndarray) -> np.ndarray:
     return out
 
 
+def signed_plane_angle(arm: np.ndarray, down: np.ndarray, outward: np.ndarray) -> np.ndarray:
+    """Signed angle (deg) of `arm` from `down`, positive towards `outward`, in the
+    plane spanned by down and outward. All inputs (T, D); D = 2 or 3. Unwrapped."""
+    d = down / (np.linalg.norm(down, axis=-1, keepdims=True) + 1e-9)
+    o = outward - np.sum(outward * d, axis=-1, keepdims=True) * d   # make outward perpendicular to down
+    o = o / (np.linalg.norm(o, axis=-1, keepdims=True) + 1e-9)
+    ang = np.degrees(np.arctan2(np.sum(arm * o, axis=-1), np.sum(arm * d, axis=-1)))
+    return unwrap_deg(ang)
+
+
 def phone_angles(bp_pixels: np.ndarray) -> dict[str, dict[str, np.ndarray]]:
     """bp_pixels: (T, 33, 3) in pixel units. Returns {'2d': {...}, '3d': {...}}."""
     out = {}
@@ -84,6 +101,9 @@ def phone_angles(bp_pixels: np.ndarray) -> dict[str, dict[str, np.ndarray]]:
         trunk = (g("Left_shoulder") + g("Right_shoulder")) / 2 - (g("Left_hip") + g("Right_hip")) / 2
         if variant == "2d":
             a["trunk_lat"] = np.degrees(np.arctan2(trunk[:, 0], -trunk[:, 1]))  # image y points down
+            for side, S, O in (("l", "Left", "Right"), ("r", "Right", "Left")):
+                a[f"arm_abd_signed_{side}"] = signed_plane_angle(
+                    g(f"{S}_elbow") - g(f"{S}_shoulder"), -trunk, g(f"{S}_shoulder") - g(f"{O}_shoulder"))
         else:
             line = g("Left_shoulder") - g("Right_shoulder")
             a["trunk_rot"] = unwrap_deg(np.degrees(np.arctan2(line[:, 2], line[:, 0])))
@@ -101,6 +121,10 @@ def vicon_angles(vicon: np.ndarray) -> dict[str, np.ndarray]:
         fore = g(f"{side}_hand") - g(f"{side}_forearm")
         a[f"arm_elev_{side}"] = angle_between(upper, trunk_down)
         a[f"elbow_{side}"] = angle_between(upper, fore)
+    for side, other in (("l", "r"), ("r", "l")):
+        a[f"arm_abd_signed_{side}"] = signed_plane_angle(
+            g(f"{side}_arm") - g(f"{side}_shoulder"), trunk_down,
+            g(f"{side}_shoulder") - g(f"{other}_shoulder"))
     lateral = g("l_shoulder")[0] - g("r_shoulder")[0]
     lateral[2] = 0.0
     lateral /= np.linalg.norm(lateral) + 1e-9
@@ -215,10 +239,10 @@ def write_csv(path: Path, rows: list[dict]) -> None:
 
 
 def print_table(rows: list[dict], keys: tuple[str, ...]) -> None:
-    head = "".join(f"{k:<12}" for k in keys) + f"{'n':>5}{'med r':>8}{'med MAE':>9}{'ROM err':>9}{'|ROM err|':>10}"
+    head = "".join(f"{k:<18}" for k in keys) + f"{'n':>5}{'med r':>8}{'med MAE':>9}{'ROM err':>9}{'|ROM err|':>10}"
     print(head)
     for r in rows:
-        print("".join(f"{str(r[k]):<12}" for k in keys)
+        print("".join(f"{str(r[k]):<18}" for k in keys)
               + f"{r['recordings']:>5}{r['median_r']:>8.2f}{r['median_change_mae']:>9.1f}"
               + f"{r['mean_rom_err']:>9.1f}{r['mean_abs_rom_err']:>10.1f}")
 
@@ -229,6 +253,8 @@ def main() -> None:
     p.add_argument("--key", help="one recording_id, e.g. G3-CTK-P1T1-Unknown-C-0")
     p.add_argument("--limit", type=int)
     p.add_argument("--max-lag", type=int, default=10, help="lag search range, video frames (10 fps)")
+    p.add_argument("--min-rate", type=float, default=15.0, help="skip recordings whose implied Vicon rate is below this (Hz)")
+    p.add_argument("--max-rate", type=float, default=30.0, help="skip recordings whose implied Vicon rate is above this (Hz)")
     p.add_argument("--output", default="outputs/keraal_vicon_offsetfree_per_recording.csv")
     p.add_argument("--summary-output", default="outputs/keraal_vicon_offsetfree_summary.csv")
     args = p.parse_args()
@@ -243,6 +269,13 @@ def main() -> None:
 
     rows: list[dict] = []
     for i, rec in enumerate(recordings, 1):
+        n_video = len(load_blazepose(rec.blazepose, image_size=None))
+        n_vicon = len(load_vicon_positions(rec.vicon))
+        rate = n_vicon / (n_video / 10.0)
+        if not args.min_rate <= rate <= args.max_rate:
+            print(f"[skip] {rec.recording_id}: Vicon/video length gives {rate:.1f} Hz "
+                  f"(expected {args.min_rate:g}-{args.max_rate:g}); lengths probably mismatched")
+            continue
         rows += evaluate(rec, args.max_lag)
         if i % 50 == 0 or i == len(recordings):
             print(f"processed {i}/{len(recordings)}")

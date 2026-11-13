@@ -51,6 +51,18 @@ def test_shoulder_vertical_reference_matches_between_systems():
     assert np.nanmean(np.abs(a_phone - a_kinect)) < 1.0
 
 
+def test_signed_arm_angle_does_not_fold_past_overhead():
+    from evaluate_keraal_vicon_offsetfree import angle_between, signed_plane_angle
+    deg = np.radians(np.arange(0, 211, 10))            # arm swings from down, past overhead, to 210 deg
+    down = np.tile([0.0, 1.0], (len(deg), 1))           # image: down is +y
+    out = np.tile([1.0, 0.0], (len(deg), 1))            # outward is +x
+    arm = np.stack([np.sin(deg), np.cos(deg)], axis=1)
+    signed = signed_plane_angle(arm, down, out)
+    unsigned = angle_between(arm, down)
+    assert abs(signed[-1] - 210) < 1e-6                 # keeps increasing past 180
+    assert abs(unsigned[-1] - 150) < 1e-6               # unsigned folds back: 210 reads as 150
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
