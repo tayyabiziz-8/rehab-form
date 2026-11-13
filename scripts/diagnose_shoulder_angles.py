@@ -28,13 +28,21 @@ def angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
     return np.degrees(np.arccos(np.clip(cosine, -1.0, 1.0)))
 
 
-def candidate_angles(sequence: np.ndarray) -> dict[str, np.ndarray]:
+def candidate_angles(
+    sequence: np.ndarray, vertical_positive_up: bool = False
+) -> dict[str, np.ndarray]:
+    """Candidate shoulder angles.
+
+    ``vertical_positive_up`` must match the coordinate system: False for
+    BlazePose image coordinates (y points down), True for Kinect (y points up).
+    Using the image convention for Kinect turns its "up" reference upside down.
+    """
     mid_hip = (sequence[:, J["l_hip"]] + sequence[:, J["r_hip"]]) / 2.0
     mid_shoulder = (
         sequence[:, J["l_shoulder"]] + sequence[:, J["r_shoulder"]]
     ) / 2.0
     up = np.zeros(sequence.shape[-1], dtype=np.float32)
-    up[1] = -1.0
+    up[1] = 1.0 if vertical_positive_up else -1.0
     result = {}
     for side in ("l", "r"):
         shoulder = sequence[:, J[f"{side}_shoulder"]]
@@ -59,8 +67,8 @@ def evaluate(recording) -> dict[str, float]:
         to_shared(load_kinect_positions(recording.kinect), "kinect_v2_25")
     )
     phone = resample_sequence(phone, len(kinect))
-    phone_angles = candidate_angles(phone)
-    kinect_angles = candidate_angles(kinect)
+    phone_angles = candidate_angles(phone, vertical_positive_up=False)
+    kinect_angles = candidate_angles(kinect, vertical_positive_up=True)
     result = {}
     for side in ("l", "r"):
         for definition in ("torso_3d", "vertical_3d", "torso_2d"):
