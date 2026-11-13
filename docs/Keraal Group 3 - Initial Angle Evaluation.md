@@ -9,12 +9,21 @@ tags:
   - keraal
   - biomechanics
   - evaluation
-status: preliminary
+status: superseded-pending-rerun
 created: 2026-11-08
-updated: 2026-11-08
+updated: 2026-11-08 (review)
 ---
 
 # Keraal Group 3 - Initial Angle Evaluation
+
+> [!warning] Review, 8 Nov 2026 — rerun required before using these numbers
+> All BlazePose results below were computed before two fixes:
+> 1. **Aspect ratio.** BlazePose x and y are fractions of image width (960) and height (544); they were used without converting back to pixels, which distorts every non-horizontal/vertical angle (a true 45° arm reads about 30°). `load_blazepose` now returns pixel units by default and orders landmarks by name.
+> 2. **Shoulder diagnostic.** `diagnose_shoulder_angles.py` used the image's up direction (−y) for Kinect too; Kinect's y points up. The vertical-reference candidate is now measured correctly for both systems.
+>
+> Two interpretation changes:
+> - **Vicon absolute angles carry fixed offsets** because ART targets sit on segments (on perfect synthetic data where phone and Vicon agree exactly, the absolute shoulder-abduction comparison still reports ~21°). Use `scripts/evaluate_keraal_vicon_offsetfree.py` (change from start pose + range of motion) before setting Vicon aside.
+> - **BlazePose vs Kinect is agreement, not accuracy.** Kinect remains a development reference; Vicon is still the reference for the accuracy claim.
 
 ## Summary
 

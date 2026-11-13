@@ -21,7 +21,9 @@ VICON_TARGETS = [
     "r_foot", "l_foot", "hips", "head", "r_tibia", "l_tibia",
 ]
 _VICON_INDEX = {name: index for index, name in enumerate(VICON_TARGETS)}
-_BLAZEPOSE_NAMES = {
+# Canonical BlazePose order (readme_files_format.txt, section 4.1). This is the
+# same order as MediaPipe Pose, so index i here matches MEDIAPIPE_33 in skeleton.py.
+BLAZEPOSE_ORDER = [
     "Nose", "Left_eye_inner", "Left_eye", "Left_eye_outer",
     "Right_eye_inner", "Right_eye", "Right_eye_outer", "Left_ear",
     "Right_ear", "Mouth_left", "Mouth_right", "Left_shoulder",
@@ -30,7 +32,11 @@ _BLAZEPOSE_NAMES = {
     "Right_index", "Left_thumb", "Right_thumb", "Left_hip", "Right_hip",
     "Left_knee", "Right_knee", "Left_ankle", "Right_ankle", "Left_heel",
     "Right_heel", "Left_foot_index", "Right_foot_index",
-}
+]
+_BLAZEPOSE_NAMES = set(BLAZEPOSE_ORDER)
+
+# Keraal Group 3 videos are 960 x 544. Groups 1a, 1b, 2a and 2b are 480 x 360.
+KERAAL_G3_IMAGE_SIZE = (960, 544)
 
 
 @dataclass(frozen=True)
@@ -94,18 +100,40 @@ def iter_recordings(root: str | Path) -> list[KeraalRecording]:
     return recordings
 
 
-def load_blazepose(path: str | Path) -> np.ndarray:
-    """Load a Keraal BlazePose JSON file as ``(frames, 33, 3)``."""
+def load_blazepose(
+    path: str | Path,
+    image_size: tuple[int, int] | None = KERAAL_G3_IMAGE_SIZE,
+) -> np.ndarray:
+    """Load a Keraal BlazePose JSON file as ``(frames, 33, 3)``.
+
+    Landmarks are placed in the canonical BlazePose order by NAME, so the
+    result does not depend on the key order inside the JSON file. Missing
+    landmarks become NaN.
+
+    BlazePose stores x as a fraction of image width and y as a fraction of
+    image height, so raw values have different scales on the two axes and
+    distort every angle that is not exactly horizontal or vertical. With
+    ``image_size=(width, height)`` (the default, Group 3 = 960 x 544) the
+    result is converted to pixel units: x * width, y * height, and z * width
+    (MediaPipe's z uses roughly the same scale as x). Pass ``image_size=None``
+    to get the raw normalised values.
+    """
     payload = json.loads(Path(path).read_text())
     positions = payload["positions"]
     frames = sorted(positions, key=float)
-    names = [name for name, _ in positions[frames[0]].items()]
-    if set(names) != _BLAZEPOSE_NAMES:
+    names = set(positions[frames[0]])
+    if names != _BLAZEPOSE_NAMES:
         raise ValueError(f"Unexpected BlazePose landmarks in {path}")
-    output = np.asarray(
-        [[positions[frame][name] for name in names] for frame in frames],
-        dtype=np.float32,
-    )
+    output = np.full((len(frames), len(BLAZEPOSE_ORDER), 3), np.nan, dtype=np.float32)
+    for t, frame in enumerate(frames):
+        landmarks = positions[frame] or {}
+        for j, name in enumerate(BLAZEPOSE_ORDER):
+            xyz = landmarks.get(name)
+            if xyz is not None and len(xyz) >= 3:
+                output[t, j] = xyz[:3]
+    if image_size is not None:
+        width, height = image_size
+        output = output * np.array([width, height, width], dtype=np.float32)
     return output
 
 

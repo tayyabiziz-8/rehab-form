@@ -30,8 +30,10 @@ Use Python 3.10–3.12. MediaPipe wheels lag behind new Python releases; if `pip
 | `scripts/align_keraal_modalities.py` | Estimates whole-frame Kinect-Vicon lag without changing baseline metrics | Tested on Keraal Group 3 |
 | `scripts/diagnose_keraal_mapping.py` | Tests a diagnostic Vicon left/right swap against Kinect without changing baseline mapping | Tested on Keraal Group 3 |
 | `scripts/evaluate_keraal_kinect.py` | Computes BlazePose-vs-Kinect angle errors using Kinect's anatomical joints as the primary reference | Tested on Keraal Group 3 |
-| `scripts/diagnose_shoulder_angles.py` | Compares candidate shoulder-angle definitions against Kinect without changing production metrics | Tested on Keraal Group 3 |
-| `docs/Keraal Group 3 - Initial Angle Evaluation.md` | Obsidian-compatible record of the initial phone-vs-Vicon evaluation | Preliminary results |
+| `scripts/diagnose_shoulder_angles.py` | Compares candidate shoulder-angle definitions against Kinect without changing production metrics | Vertical-axis fix 8 Nov; rerun needed |
+| `scripts/evaluate_keraal_vicon_offsetfree.py` | BlazePose vs Vicon on change from start pose and range of motion (cancels ART-target offsets); by exercise and participant | Tested on synthetic data; run on Group 3 |
+| `tests/test_keraal.py` | Checks BlazePose name ordering, pixel conversion and the vertical-axis fix on a synthetic Keraal folder | Passing |
+| `docs/Keraal Group 3 - Initial Angle Evaluation.md` | Obsidian-compatible record of the initial phone-vs-Vicon evaluation | Pre-fix results; rerun pending (see `CHANGES-2026-11-08.md`) |
 | `data/README.md` | Where to download each dataset, licences, what may ship in the product | — |
 
 "Not yet run" means PyTorch, aeon and MediaPipe were not available where this was written. Expect small fixes on the first run.
@@ -67,6 +69,9 @@ python scripts/evaluate_keraal_kinect.py --root data/keraal
 
 # 8. Diagnose alternative shoulder-angle definitions
 python scripts/diagnose_shoulder_angles.py --root data/keraal
+
+# 9. Offset-free phone-vs-Vicon (change from start pose, range of motion)
+python scripts/evaluate_keraal_vicon_offsetfree.py --root data/keraal
 ```
 
 Download the `.task` model file from the MediaPipe Pose Landmarker guide into `models/` first.
@@ -79,6 +84,10 @@ Download the `.task` model file from the MediaPipe Pose Landmarker guide into `m
 - [ ] Compare MediaPipe output on 10 Keraal videos with Keraal's shipped BlazePose skeletons.
 
 ## Rules for results
+
+- BlazePose angles must be computed in pixel units (`load_blazepose` does this by default; Group 3 = 960 × 544, other groups = 480 × 360).
+- Against Vicon, report change from start pose and range of motion, not absolute angles.
+- BlazePose vs Kinect is agreement, not accuracy.
 
 - Always report mean ± std over all folds, plus balanced accuracy. Datasets are small (often 70–300 samples per exercise), and single runs mislead.
 - Never select models on the test fold. `train_rehab_pile.py` selects on training loss only.
