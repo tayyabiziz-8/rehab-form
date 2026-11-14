@@ -25,10 +25,21 @@ def test_landmarks_ordered_by_name_not_json_order():
     assert np.allclose(bp[0, i, :2], [540.0, 200.0], atol=1e-3)
 
 
+def test_unmirror_restores_true_left_and_right():
+    # In the synthetic recording only the person's LEFT arm moves.
+    i = BLAZEPOSE_ORDER.index("Left_wrist")
+    fixed = load_blazepose(REC.blazepose)                   # default: un-mirrored
+    as_shipped = load_blazepose(REC.blazepose, unmirror=False)
+    assert np.nanstd(fixed[:, i, 0]) > 10                   # true left wrist moves
+    assert np.nanstd(as_shipped[:, i, 0]) < 1e-3            # shipped "Left" is the still right wrist
+    sh = BLAZEPOSE_ORDER.index("Left_shoulder")
+    assert abs(fixed[0, sh, 0] - 540.0) < 1e-2              # back on the person's left (image right)
+
+
 def test_pixel_units_preserve_angles():
     # Frame where the synthetic arm is near 45 degrees from vertical.
     bp_px = load_blazepose(REC.blazepose)
-    bp_raw = load_blazepose(REC.blazepose, image_size=None)
+    bp_raw = load_blazepose(REC.blazepose, image_size=None)  # un-mirrored, normalised
     i_sh, i_el = BLAZEPOSE_ORDER.index("Left_shoulder"), BLAZEPOSE_ORDER.index("Left_elbow")
 
     def arm_deg(bp, t):
@@ -61,6 +72,20 @@ def test_signed_arm_angle_does_not_fold_past_overhead():
     unsigned = angle_between(arm, down)
     assert abs(signed[-1] - 210) < 1e-6                 # keeps increasing past 180
     assert abs(unsigned[-1] - 150) < 1e-6               # unsigned folds back: 210 reads as 150
+
+
+def test_quaternion_joint_angle_ignores_target_mounting():
+    from evaluate_vicon_quaternions import joint_rotation, q_mul
+    rng = np.random.default_rng(0)
+    mount_p, mount_c = (m / np.linalg.norm(m) for m in rng.normal(size=(2, 4)))
+    true = np.radians(np.linspace(0, 150, 60))                     # joint opens 0 -> 150 deg
+    motion = np.stack([np.zeros_like(true), np.sin(true / 2), np.zeros_like(true), np.cos(true / 2)], 1)
+    q_parent = np.tile(mount_p, (len(true), 1))
+    q_child = q_mul(motion, np.tile(mount_c, (len(true), 1)))
+    res = joint_rotation(q_parent, q_child)
+    assert abs(np.nanmax(res["magnitude"]) - 150) < 0.5            # full range recovered
+    assert abs(abs(res["signed"][-1]) - 150) < 0.5                 # single-axis angle recovered
+    assert res["axis_share"] > 0.99
 
 
 if __name__ == "__main__":

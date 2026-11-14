@@ -24,8 +24,8 @@ Angles (degrees)
                 past overhead, <0 = across the body. Same trunk-midline and
                 shoulder-line references for both systems, so no sign flip is
                 applied and a negative r means truly opposite motion.
-                (BlazePose 2D only; tests whether overhead failures come from
-                the unsigned angle folding back near 180 degrees.)
+                (BlazePose 2D only.) Frames where the arm points towards or away
+                from the camera (in-plane length < 50% of full) are left out.
 
 BlazePose is loaded in pixel units (aspect-ratio corrected) and evaluated in
 two variants: "2d" (image x, y) and "3d" (adds BlazePose's relative depth).
@@ -78,13 +78,28 @@ def unwrap_deg(a: np.ndarray) -> np.ndarray:
     return out
 
 
-def signed_plane_angle(arm: np.ndarray, down: np.ndarray, outward: np.ndarray) -> np.ndarray:
+MIN_IN_PLANE = 0.5   # below this fraction of its full length, the arm points at/away from the camera
+
+
+def signed_plane_angle(arm: np.ndarray, down: np.ndarray, outward: np.ndarray,
+                       full_length: np.ndarray | None = None) -> np.ndarray:
     """Signed angle (deg) of `arm` from `down`, positive towards `outward`, in the
-    plane spanned by down and outward. All inputs (T, D); D = 2 or 3. Unwrapped."""
+    plane spanned by down and outward. All inputs (T, D); D = 2 or 3. Unwrapped.
+
+    Frames where the arm's length inside the plane is below MIN_IN_PLANE of its
+    full length are set to NaN: the arm points towards or away from the camera
+    (e.g. shoulder flexion in CTK) and the in-plane angle is meaningless there.
+    `full_length` is the arm's true length per frame; if None (2D phone data)
+    the 90th percentile of the in-plane length over the recording is used.
+    """
     d = down / (np.linalg.norm(down, axis=-1, keepdims=True) + 1e-9)
     o = outward - np.sum(outward * d, axis=-1, keepdims=True) * d   # make outward perpendicular to down
     o = o / (np.linalg.norm(o, axis=-1, keepdims=True) + 1e-9)
-    ang = np.degrees(np.arctan2(np.sum(arm * o, axis=-1), np.sum(arm * d, axis=-1)))
+    u, w = np.sum(arm * o, axis=-1), np.sum(arm * d, axis=-1)
+    in_plane = np.hypot(u, w)
+    ref = full_length if full_length is not None else np.full_like(in_plane, np.nanpercentile(in_plane, 90))
+    ang = np.degrees(np.arctan2(u, w))
+    ang[in_plane < MIN_IN_PLANE * ref] = np.nan
     return unwrap_deg(ang)
 
 
@@ -122,9 +137,10 @@ def vicon_angles(vicon: np.ndarray) -> dict[str, np.ndarray]:
         a[f"arm_elev_{side}"] = angle_between(upper, trunk_down)
         a[f"elbow_{side}"] = angle_between(upper, fore)
     for side, other in (("l", "r"), ("r", "l")):
+        arm = g(f"{side}_arm") - g(f"{side}_shoulder")
         a[f"arm_abd_signed_{side}"] = signed_plane_angle(
-            g(f"{side}_arm") - g(f"{side}_shoulder"), trunk_down,
-            g(f"{side}_shoulder") - g(f"{other}_shoulder"))
+            arm, trunk_down, g(f"{side}_shoulder") - g(f"{other}_shoulder"),
+            full_length=np.linalg.norm(arm, axis=-1))
     lateral = g("l_shoulder")[0] - g("r_shoulder")[0]
     lateral[2] = 0.0
     lateral /= np.linalg.norm(lateral) + 1e-9

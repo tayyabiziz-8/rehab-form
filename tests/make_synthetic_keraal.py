@@ -42,10 +42,19 @@ def write(root: Path, rec: str, n_video: int = 100, vicon_hz: int = 20,
         p["Left_wrist"] = [540 + 220 * d[0], 200 + 220 * d[1], 0.0]
         p["Right_elbow"] = [420.0, 310.0, 0.0];   p["Right_wrist"] = [420.0, 420.0, 0.0]
         pix[i] = p
+    def mirrored(name: str) -> str:
+        if name.startswith("Left_"):
+            return "Right_" + name[5:]
+        if name.startswith("Right_"):
+            return "Left_" + name[6:]
+        return name
+
     positions = {}
     for i, p in pix.items():
-        # Normalised like Keraal, keys in reversed order on purpose.
-        positions[f"{i + 1}.0"] = {n: [p[n][0] / W, p[n][1] / H, p[n][2] / W] for n in reversed(BLAZEPOSE_ORDER)}
+        # Like the real Keraal files: normalised, computed on a MIRRORED image
+        # (x -> 1 - x and Left/Right labels swapped), keys in reversed order.
+        positions[f"{i + 1}.0"] = {mirrored(n): [1.0 - p[n][0] / W, p[n][1] / H, p[n][2] / W]
+                                   for n in reversed(BLAZEPOSE_ORDER)}
     (root / "blazepose" / f"G3-BP-{rec}.json").write_text(json.dumps({"positions": positions}))
 
     # Kinect (25 joints x 7), metres, y up; same pose as the pixels.
@@ -66,9 +75,24 @@ def write(root: Path, rec: str, n_video: int = 100, vicon_hz: int = 20,
     # Vicon (17 targets x 7), mm, z up; person's left = +y. Targets on segments.
     n_vicon = int(n_video / 10 * vicon_hz)
     tc = np.linspace(0, n_video / 10, n_vicon)
+    # Orientation quaternions (x, y, z, w). Every target gets a fixed, arbitrary
+    # mounting rotation, like real ART targets; the left upper arm, forearm and
+    # hand also rotate about the forward (x) axis by the arm angle.
+    rng = np.random.default_rng(7)
+    mounts = rng.normal(size=(17, 4)); mounts /= np.linalg.norm(mounts, axis=1, keepdims=True)
+
+    def qmul(a, b):
+        ax, ay, az, aw = a; bx, by, bz, bw = b
+        return np.array([aw*bx + ax*bw + ay*bz - az*by, aw*by - ax*bz + ay*bw + az*bx,
+                         aw*bz + ax*by - ay*bx + az*bw, aw*bw - ax*bx - ay*by - az*bz])
+
     lines = []
     for a in arm_angle(tc, max_deg):
-        P = np.zeros((17, 7)); P[:, 6] = 1.0
+        P = np.zeros((17, 7)); P[:, 3:7] = mounts
+        motion = np.array([np.sin(a / 2), 0.0, 0.0, np.cos(a / 2)])
+        for name in ("l_arm", "l_forearm", "l_hand"):
+            k = VICON_TARGETS.index(name)
+            P[k, 3:7] = qmul(motion, mounts[k])
         def s(name, xyz): P[VICON_TARGETS.index(name), :3] = xyz
         ls, rs = np.array([0, 200.0, 1400]), np.array([0, -200.0, 1400])
         s("l_shoulder", ls); s("r_shoulder", rs); s("chest", [0, 0, 1300]); s("hips", [0, 0, 1000])

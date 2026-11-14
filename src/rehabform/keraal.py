@@ -38,6 +38,14 @@ _BLAZEPOSE_NAMES = set(BLAZEPOSE_ORDER)
 # Keraal Group 3 videos are 960 x 544. Groups 1a, 1b, 2a and 2b are 480 x 360.
 KERAAL_G3_IMAGE_SIZE = (960, 544)
 
+# The shipped BlazePose skeletons were computed on a horizontally MIRRORED copy
+# of the video. Evidence (Group 3, Nov 2026): drawn on the video, the skeleton
+# sits mirrored about the image centre, and in the flank-stretch exercise (ELK)
+# BlazePose's left arm tracks Vicon's RIGHT arm (mean gap 23 deg swapped vs
+# 149 deg same-side at peak frames). Un-mirroring means x -> 1 - x AND swapping
+# every Left_/Right_ landmark. Check other groups before assuming the same.
+KERAAL_BLAZEPOSE_MIRRORED = True
+
 
 @dataclass(frozen=True)
 class KeraalRecording:
@@ -100,9 +108,18 @@ def iter_recordings(root: str | Path) -> list[KeraalRecording]:
     return recordings
 
 
+def _mirror_name(name: str) -> str:
+    if name.startswith("Left_"):
+        return "Right_" + name[5:]
+    if name.startswith("Right_"):
+        return "Left_" + name[6:]
+    return name
+
+
 def load_blazepose(
     path: str | Path,
     image_size: tuple[int, int] | None = KERAAL_G3_IMAGE_SIZE,
+    unmirror: bool = KERAAL_BLAZEPOSE_MIRRORED,
 ) -> np.ndarray:
     """Load a Keraal BlazePose JSON file as ``(frames, 33, 3)``.
 
@@ -117,6 +134,11 @@ def load_blazepose(
     result is converted to pixel units: x * width, y * height, and z * width
     (MediaPipe's z uses roughly the same scale as x). Pass ``image_size=None``
     to get the raw normalised values.
+
+    With ``unmirror=True`` (the default for Keraal, see
+    KERAAL_BLAZEPOSE_MIRRORED) x is replaced by 1 - x and every Left_/Right_
+    landmark is swapped, so the skeleton matches the video and the person's
+    real left and right. Pass ``unmirror=False`` for the file exactly as shipped.
     """
     payload = json.loads(Path(path).read_text())
     positions = payload["positions"]
@@ -128,9 +150,12 @@ def load_blazepose(
     for t, frame in enumerate(frames):
         landmarks = positions[frame] or {}
         for j, name in enumerate(BLAZEPOSE_ORDER):
-            xyz = landmarks.get(name)
+            source = _mirror_name(name) if unmirror else name
+            xyz = landmarks.get(source)
             if xyz is not None and len(xyz) >= 3:
                 output[t, j] = xyz[:3]
+    if unmirror:
+        output[..., 0] = 1.0 - output[..., 0]
     if image_size is not None:
         width, height = image_size
         output = output * np.array([width, height, width], dtype=np.float32)
@@ -144,6 +169,16 @@ def load_vicon_positions(path: str | Path) -> np.ndarray:
     if values.shape[1] != expected_width:
         raise ValueError(f"Expected {expected_width} Vicon columns, got {values.shape[1]}")
     return values.reshape(len(values), len(VICON_TARGETS), 7)[:, :, :3].astype(np.float32)
+
+
+def load_vicon(path: str | Path) -> np.ndarray:
+    """Load full Vicon rows as ``(frames, 17, 7)``: x, y, z (mm, z up) and the
+    target orientation quaternion qx, qy, qz, qw (readme order)."""
+    values = np.loadtxt(path, ndmin=2)
+    expected_width = len(VICON_TARGETS) * 7
+    if values.shape[1] != expected_width:
+        raise ValueError(f"Expected {expected_width} Vicon columns, got {values.shape[1]}")
+    return values.reshape(len(values), len(VICON_TARGETS), 7)
 
 
 def load_kinect_positions(path: str | Path) -> np.ndarray:
