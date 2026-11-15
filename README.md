@@ -33,6 +33,7 @@ Use Python 3.10–3.12. MediaPipe wheels lag behind new Python releases; if `pip
 | `scripts/diagnose_shoulder_angles.py` | Compares candidate shoulder-angle definitions against Kinect without changing production metrics | Vertical-axis fix 8 Nov; rerun needed |
 | `scripts/evaluate_keraal_vicon_offsetfree.py` | BlazePose vs Vicon on change from start pose and range of motion (cancels ART-target offsets); by exercise and participant; signed frontal-plane arm angle; skips recordings with mismatched lengths | Run on Group 3; signed angle added |
 | `scripts/evaluate_vicon_quaternions.py` | Vicon joint angles from segment orientations (chest→arm, arm→forearm, hips→chest), compared with the phone and with target-position angles; tells whether target-based angles understate ranges | Tested on synthetic data |
+| `scripts/diagnose_arm_reference.py` | Phone arm angle against four trunk references (midline, shoulder-line perpendicular, image vertical, 3D midline) vs orientation-based Vicon; explains overhead-reach overstatement | Tested on synthetic data |
 | `scripts/overlay_blazepose.py` | Draws BlazePose (left orange, right blue) on 4 video frames per recording: start, Vicon arm peaks, largest disagreement | Tested on synthetic video |
 | `tests/test_keraal.py` | Checks BlazePose name ordering, pixel conversion and the vertical-axis fix on a synthetic Keraal folder | Passing |
 | `docs/Keraal Group 3 - Initial Angle Evaluation.md` | Obsidian-compatible record of the initial phone-vs-Vicon evaluation | Pre-fix results; rerun pending (see `CHANGES-2026-11-08.md`) |
@@ -80,6 +81,9 @@ python scripts/overlay_blazepose.py --root data/keraal --exercise ELK
 
 # 11. Vicon joint angles from segment orientations (quaternions)
 python scripts/evaluate_vicon_quaternions.py --root data/keraal
+
+# 12. Which trunk reference makes the phone arm angle match Vicon?
+python scripts/diagnose_arm_reference.py --root data/keraal
 ```
 
 Download the `.task` model file from the MediaPipe Pose Landmarker guide into `models/` first.
