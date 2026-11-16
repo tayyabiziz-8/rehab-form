@@ -20,6 +20,8 @@ Use Python 3.10–3.12. MediaPipe wheels lag behind new Python releases; if `pip
 | Path | What it does | Status |
 |---|---|---|
 | `src/rehabform/skeleton.py` | Maps MediaPipe (33) and Kinect v2 (25) skeletons to 13 shared joints; normalises (mid-hip centre, torso scale); computes joint angles and trunk lean | Tested |
+| `src/rehabform/angles.py` | **Angle spec**: the phone measures the app reports (arm elevation vs shoulder line, elbow flexion, trunk lean, trunk rotation), computed exactly as validated, with validity masks; `TrustTable` reads `config/trust_table.json` | Tested |
+| `config/trust_table.json` | **Trust table v3**: per measure and exercise, whether it may be reported (range / relative / timing only / not reportable), why, and the validation numbers; Keraal errors mapped to measures | Thresholds still to calibrate |
 | `src/rehabform/reps.py` | Counts reps from one joint angle with peak detection; no training needed | Tested |
 | `src/rehabform/models.py` | FCN baseline (Wang et al. 2017), one of the 9 models benchmarked on Rehab-Pile | Compiles; not yet run |
 | `scripts/train_rehab_pile.py` | Trains FCN on every fold of one Rehab-Pile dataset; prints accuracy and balanced accuracy, mean ± std | Compiles; not yet run |

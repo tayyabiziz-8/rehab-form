@@ -1,0 +1,221 @@
+{
+  "version": 3,
+  "date": "2026-11-16",
+  "source": "Keraal Group 3: 539 recordings, 3 healthy participants, phone-style pose (BlazePose, un-mirrored, pixel units) vs Vicon. Reference: Vicon joint angles from segment orientations; trunk lean vs Vicon trunk tilt. Scripts: evaluate_vicon_quaternions.py, diagnose_arm_reference.py, evaluate_keraal_vicon_offsetfree.py.",
+  "modes": {
+    "range": "Absolute angles and range of motion may be shown, with the stated typical error.",
+    "relative": "Timing and change relative to the patient's own start pose or reference rep may be shown; not absolute degrees.",
+    "timing_only": "Only when the movement happens (rep detection, holds, tempo); no sizes.",
+    "not_reportable": "Do not show or use for feedback."
+  },
+  "measures": {
+    "arm_elevation": {
+      "definition": "Signed arm angle in the image plane against the shoulder-line perpendicular; 0 = down, 90 = out, 180 = overhead.",
+      "function": "rehabform.angles.arm_elevation",
+      "exercises": {
+        "CTK": {
+          "mode": "range",
+          "note": "Arms raised forwards to shoulder height: median range error under 5 deg, typical 10-18 deg per recording.",
+          "evidence": {
+            "r": 0.9,
+            "change_mae_deg": 19.1,
+            "range_error_median_deg": -4,
+            "range_error_abs_median_deg": 17.8
+          }
+        },
+        "RTK": {
+          "mode": "range",
+          "note": "Arms held during trunk rotation: median range error about 2 deg.",
+          "evidence": {
+            "r": 0.78,
+            "change_mae_deg": 15.9,
+            "range_error_median_deg": -2,
+            "range_error_abs_median_deg": 10.1
+          }
+        },
+        "ELK": {
+          "mode": "relative",
+          "note": "Overhead reach: timing reliable; absolute range reads about 25 deg high (8 deg for one participant, ~30 deg for two).",
+          "evidence": {
+            "r": 0.98,
+            "change_mae_deg": 14.0,
+            "range_error_median_deg": 26,
+            "range_error_abs_median_deg": 29.4
+          }
+        }
+      },
+      "overhead_rule": {
+        "above_deg": 110,
+        "mode": "relative",
+        "note": "Arm above shoulder height: range reads high; report change only."
+      }
+    },
+    "elbow_flexion": {
+      "definition": "Elbow bend in the image plane; 0 = straight.",
+      "function": "rehabform.angles.elbow_flexion",
+      "exercises": {
+        "ELK": {
+          "mode": "range",
+          "note": "Arm moving sideways: range within 0-9 deg of Vicon.",
+          "evidence": {
+            "r": 0.72,
+            "range_error_median_deg": [
+              0,
+              9
+            ]
+          }
+        },
+        "CTK": {
+          "mode": "not_reportable",
+          "note": "Forearm points at the camera: range reads about twice too large.",
+          "evidence": {
+            "r": 0.55,
+            "range_error_median_deg": [
+              62,
+              58
+            ]
+          }
+        },
+        "RTK": {
+          "mode": "not_reportable",
+          "note": "Timing does not match Vicon.",
+          "evidence": {
+            "r": 0.27
+          }
+        }
+      }
+    },
+    "trunk_lean": {
+      "definition": "Sideways tilt of the hip-to-shoulder line from the image vertical; + = towards the person's left. This is tilt from vertical, not chest-versus-pelvis angle (about 25 deg larger in ELK).",
+      "function": "rehabform.angles.trunk_lean",
+      "exercises": {
+        "ELK": {
+          "mode": "range",
+          "note": "Flank stretch: near-exact (median error 2.4 deg, range within 5 deg).",
+          "evidence": {
+            "r": 0.99,
+            "change_mae_deg": 2.4,
+            "range_error_median_deg": -5
+          }
+        },
+        "RTK": {
+          "mode": "relative",
+          "note": "Small lean during rotation: detectable as change, size under-read by about 27 deg.",
+          "evidence": {
+            "r": 0.74,
+            "change_mae_deg": 8.1,
+            "range_error_mean_deg": -27
+          }
+        },
+        "CTK": {
+          "mode": "not_reportable",
+          "note": "Hardly any trunk movement in this exercise; signal is mostly noise.",
+          "evidence": {
+            "r": 0.27,
+            "change_mae_deg": 4.5
+          }
+        }
+      }
+    },
+    "trunk_rotation": {
+      "definition": "Shoulder-line twist about the vertical, from BlazePose relative depth.",
+      "function": "rehabform.angles.trunk_rotation",
+      "default": {
+        "mode": "not_reportable",
+        "note": "Only validated for the torso rotation exercise."
+      },
+      "exercises": {
+        "RTK": {
+          "mode": "timing_only",
+          "note": "Rotation timing reliable; size reads more than twice the spine rotation (depth estimate).",
+          "evidence": {
+            "r": 0.98,
+            "range_error_vs_spine_deg": 74,
+            "range_error_vs_shoulder_line_deg": 37
+          }
+        }
+      }
+    }
+  },
+  "exercises": {
+    "CTK": {
+      "name": "hiding face",
+      "description": "Arms raised forwards, flexed about 90 deg at shoulder and elbow, hands in front of the face."
+    },
+    "ELK": {
+      "name": "flank stretch",
+      "description": "One arm reaches overhead while the trunk bends sideways; the other arm stays along the body."
+    },
+    "RTK": {
+      "name": "torso rotation",
+      "description": "Arms raised, trunk rotates to each side."
+    }
+  },
+  "known_errors": {
+    "_note": "Keraal error descriptions per exercise; error numbers (E1-E3) and thresholds to confirm against the Group 1A/2A Anvil labels.",
+    "RTK": [
+      {
+        "description": "arms not raised enough",
+        "measure": "arm_elevation",
+        "direction": "below",
+        "threshold_deg": null
+      },
+      {
+        "description": "torso rotation not sufficient",
+        "measure": "trunk_rotation",
+        "direction": "below_reference_rep",
+        "threshold_deg": null
+      },
+      {
+        "description": "body leaned to the side",
+        "measure": "trunk_lean",
+        "direction": "abs_above",
+        "threshold_deg": null
+      }
+    ],
+    "ELK": [
+      {
+        "description": "opposite arm not along the body",
+        "measure": "arm_elevation",
+        "side": "non_reaching",
+        "direction": "above",
+        "threshold_deg": null
+      },
+      {
+        "description": "body not tilted",
+        "measure": "trunk_lean",
+        "direction": "abs_below",
+        "threshold_deg": null
+      },
+      {
+        "description": "upper arm not bent",
+        "measure": "elbow_flexion",
+        "side": "reaching",
+        "direction": "below",
+        "threshold_deg": null
+      }
+    ],
+    "CTK": [
+      {
+        "description": "arms not raised enough",
+        "measure": "arm_elevation",
+        "direction": "below",
+        "threshold_deg": null
+      },
+      {
+        "description": "arms not outspread enough",
+        "measure": null,
+        "direction": null,
+        "threshold_deg": null,
+        "gap": "needs a new measure (e.g. elbow spread relative to shoulder width); not yet validated"
+      },
+      {
+        "description": "third error variant (listed as 'arms not raised enough' in the paper)",
+        "measure": null,
+        "direction": null,
+        "threshold_deg": null,
+        "gap": "confirm meaning from the Anvil labels"
+      }
+    ]
+  }
+}
