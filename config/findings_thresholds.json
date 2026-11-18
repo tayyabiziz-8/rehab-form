@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "date": "2026-11-18",
+  "source": "Keraal 1A + 2A, annotator A error labels vs both-Correct; thresholds fitted on all subjects, evidence from leave-one-subject-out",
+  "detectors": {
+    "CTK_arms_not_raised": {
+      "exercise": "CTK",
+      "keraal_error": "Error1",
+      "meaning": "arms not raised enough",
+      "body_part": "BothArms",
+      "feature": "wrist_height_p95",
+      "direction": "below",
+      "threshold": 0.821,
+      "unit": "shoulder widths above the shoulders",
+      "reportable": true,
+      "typical_correct": 0.991,
+      "severity_cut": 0.458,
+      "evidence": {
+        "loso_sensitivity": 0.962,
+        "loso_specificity": 0.782,
+        "kappa_clinicians": 0.64,
+        "kappa_system_A": 0.429,
+        "kappa_system_B": 0.561,
+        "n_error": 26,
+        "n_correct": 55,
+        "people_error": 8
+      }
+    },
+    "CTK_error3": {
+      "exercise": "CTK",
+      "keraal_error": "Error3",
+      "meaning": "to confirm (both arms; elbow-bend signal)",
+      "body_part": "BothArms",
+      "feature": "wrist_spread_p95",
+      "direction": "below",
+      "threshold": 2.171,
+      "unit": "shoulder widths between wrists",
+      "reportable": true,
+      "typical_correct": 2.622,
+      "severity_cut": null,
+      "evidence": {
+        "loso_sensitivity": 0.412,
+        "loso_specificity": 0.818,
+        "kappa_clinicians": 0.477,
+        "kappa_system_A": 0.2,
+        "kappa_system_B": -0.101,
+        "n_error": 17,
+        "n_correct": 55,
+        "people_error": 3
+      }
+    },
+    "ELK_body_not_tilted": {
+      "exercise": "ELK",
+      "keraal_error": "Error2",
+      "meaning": "body not tilted",
+      "body_part": "Spine",
+      "feature": "lean_range",
+      "direction": "below",
+      "threshold": 20.154,
+      "unit": "deg trunk lean range",
+      "reportable": true,
+      "typical_correct": 32.267,
+      "severity_cut": 14.504,
+      "evidence": {
+        "loso_sensitivity": 0.791,
+        "loso_specificity": 0.933,
+        "kappa_clinicians": 0.43,
+        "kappa_system_A": 0.534,
+        "kappa_system_B": 0.43,
+        "n_error": 43,
+        "n_correct": 15,
+        "people_error": 5
+      }
+    },
+    "RTK_arms_not_raised": {
+      "exercise": "RTK",
+      "keraal_error": "Error1",
+      "meaning": "arms not raised enough",
+      "body_part": "BothArms",
+      "feature": "arm_peak_mean",
+      "direction": "below",
+      "threshold": 73.391,
+      "unit": "deg arm elevation",
+      "reportable": true,
+      "typical_correct": 93.616,
+      "severity_cut": 69.802,
+      "evidence": {
+        "loso_sensitivity": 0.75,
+        "loso_specificity": 0.588,
+        "kappa_clinicians": 0.648,
+        "kappa_system_A": 0.064,
+        "kappa_system_B": 0.146,
+        "n_error": 4,
+        "n_correct": 51,
+        "people_error": 3
+      }
+    },
+    "RTK_torso_not_rotated": {
+      "exercise": "RTK",
+      "keraal_error": "Error2",
+      "meaning": "torso rotation not sufficient (Spine)",
+      "body_part": "Spine",
+      "feature": "lean_range",
+      "direction": "below",
+      "threshold": 4.05,
+      "unit": "deg trunk lean range",
+      "reportable": true,
+      "typical_correct": 5.515,
+      "severity_cut": null,
+      "evidence": {
+        "loso_sensitivity": 0.5,
+        "loso_specificity": 0.686,
+        "kappa_clinicians": 0.305,
+        "kappa_system_A": 0.064,
+        "kappa_system_B": 0.137,
+        "n_error": 6,
+        "n_correct": 51,
+        "people_error": 2
+      }
+    }
+  }
+}

@@ -1,0 +1,155 @@
+"""Findings engine: measurements + fitted thresholds + trust table -> structured findings.
+
+A finding is the ONLY thing feedback may talk about. Each one says which
+error was checked, whether it was found, the measured value and the typical
+value of correct performance (only if the trust table allows quoting that
+measure), and the time window it refers to. The feedback writer rewords
+findings; the claim checker (rehabform.claims) rejects any sentence that is
+not backed by one.
+
+Thresholds come from config/findings_thresholds.json, written by
+scripts/pillar2_detectors.py (fitted on Keraal 1A + 2A clinician labels).
+"""
+from __future__ import annotations
+
+import json
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+
+import numpy as np
+
+from .angles import TrustTable, compute_all
+from .session_features import FPS, features, peak_window, series
+
+DEFAULT_THRESHOLDS = Path(__file__).resolve().parents[2] / "config" / "findings_thresholds.json"
+
+# feature -> (trust-table measure or None, plain label, unit, decimals, is a change/range measure)
+FEATURE_INFO = {
+    "lean_range": ("trunk_lean", "sideways bend of your upper body", "°", 0, True),
+    "lean_abs_p95": ("trunk_lean", "sideways bend of your upper body", "°", 0, True),
+    "rotation_range": ("trunk_rotation", "twist of your upper body", "°", 0, True),
+    "arm_peak_mean": ("arm_elevation", "height of your arms", "°", 0, False),
+    "arm_peak_high": ("arm_elevation", "height of your raised arm", "°", 0, False),
+    "arm_range_mean": ("arm_elevation", "range of your arm movement", "°", 0, True),
+    "elbow_reach_p50": ("elbow_flexion", "bend in your elbow", "°", 0, False),
+    "elbow_reach_p95": ("elbow_flexion", "bend in your elbow", "°", 0, False),
+    "elbow_mean_p50": ("elbow_flexion", "bend in your elbows", "°", 0, False),
+    "wrist_height_p95": (None, "height of your hands above your shoulders", "shoulder widths", 1, False),
+    "elbow_height_p95": (None, "height of your elbows above your shoulders", "shoulder widths", 1, False),
+    "wrist_spread_p95": (None, "distance between your hands", "shoulder widths", 1, False),
+    "elbow_spread_p95": (None, "distance between your elbows", "shoulder widths", 1, False),
+}
+
+# Plain-language wording per detector (patient-facing). Unknown detectors fall back to 'meaning'.
+DETECTOR_TEXT = {
+    "CTK_arms_not_raised": {"error": "raise your arms higher", "ok": "your arms reached a good height"},
+    "CTK_error3": {"error": "keep your arms more open", "ok": "your arm position looked right"},
+    "ELK_body_not_tilted": {"error": "bend your upper body further to the side",
+                            "ok": "your upper body bent well to the side"},
+    "RTK_arms_not_raised": {"error": "keep your arms raised", "ok": "your arms stayed at a good height"},
+    "RTK_torso_not_rotated": {"error": "turn your upper body further", "ok": "your upper body turned well"},
+}
+
+BODY_PART_TEXT = {"Spine": "upper body", "BothArms": "both arms", "LeftArm": "left arm", "RightArm": "right arm"}
+
+
+@dataclass
+class Finding:
+    id: str                     # F1, F2, ... (feedback sentences cite these)
+    detector: str
+    exercise: str
+    status: str                 # "error" | "ok"
+    issue: str                  # what was checked (Keraal error meaning)
+    advice: str                 # plain-language action (error) or praise (ok)
+    body_part: str              # Spine | BothArms | LeftArm | RightArm
+    side: str | None            # "left" / "right" when the finding is about one side
+    feature: str
+    measure_label: str
+    unit: str
+    quotable: bool              # may the numbers be shown to the user?
+    value: float | None         # None when not quotable
+    typical: float | None       # typical value of correct performance (None when not quotable)
+    threshold: float | None
+    severity: str | None        # "small" | "large" for errors when the measure orders severity
+    start_s: float | None
+    end_s: float | None
+    trust_mode: str | None
+    trust_note: str = ""
+    evidence: dict = field(default_factory=dict)
+
+    def allowed_numbers(self) -> list[float]:
+        nums = [x for x in (self.start_s, self.end_s) if x is not None]
+        if self.quotable:
+            nums += [x for x in (self.value, self.typical) if x is not None]
+        return nums
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+def _round(x: float, decimals: int) -> float:
+    return float(round(x, decimals)) if decimals else float(int(round(x)))
+
+
+class FindingsEngine:
+    def __init__(self, thresholds_path: str | Path = DEFAULT_THRESHOLDS, trust: TrustTable | None = None):
+        cfg = json.loads(Path(thresholds_path).read_text(encoding="utf-8"))
+        self.detectors = cfg["detectors"]
+        self.trust = trust or TrustTable.load()
+
+    def _quotable(self, det: dict, feature: str, exercise: str, value: float) -> tuple[bool, str | None, str]:
+        measure, _label, _unit, _dec, is_change = FEATURE_INFO.get(feature, (None, feature, "", 1, False))
+        if not det.get("reportable", False):
+            return False, None, "proxy measure: used to detect, never quoted"
+        if measure is None:
+            return True, None, "geometric ratio in shoulder widths"
+        d = self.trust.decide(measure, exercise, value_deg=value)
+        if d.mode == "range" or (d.mode == "relative" and is_change):
+            return True, d.mode, d.note
+        return False, d.mode, d.note
+
+    def run(self, bp: np.ndarray, exercise: str) -> list[Finding]:
+        """Findings for one recording / session. ``bp``: (T, 33, 3) pixel units, un-mirrored, sides fixed."""
+        m = {k: v for k, (v, _ok) in compute_all(bp).items()}
+        feats = features(bp)
+        ser = series(bp, m)
+        out: list[Finding] = []
+        for det_id, det in self.detectors.items():
+            if det["exercise"] != exercise:
+                continue
+            feat = det["feature"]
+            value = feats.get(feat, float("nan"))
+            if not np.isfinite(value):
+                continue
+            below = det["direction"] == "below"
+            is_error = value < det["threshold"] if below else value > det["threshold"]
+            _measure, label, unit, dec, _chg = FEATURE_INFO.get(feat, (None, feat, "", 1, False))
+            quotable, mode, note = self._quotable(det, feat, exercise, value)
+            severity = None
+            if is_error and det.get("severity_cut") is not None:
+                beyond = value < det["severity_cut"] if below else value > det["severity_cut"]
+                severity = "large" if beyond else "small"
+            win = peak_window(ser.get(feat, np.full(len(bp), np.nan)))
+            side = None
+            if feat in ("arm_peak_high", "elbow_reach_p50", "elbow_reach_p95"):
+                side = {"l": "left", "r": "right"}[ser["_reaching_side"]]
+            text = DETECTOR_TEXT.get(det_id, {"error": det["meaning"], "ok": f"no sign of: {det['meaning']}"})
+            typical = det.get("typical_correct")
+            out.append(Finding(
+                id=f"F{len(out) + 1}", detector=det_id, exercise=exercise,
+                status="error" if is_error else "ok", issue=det["meaning"],
+                advice=text["error" if is_error else "ok"], body_part=det["body_part"], side=side,
+                feature=feat, measure_label=label, unit=unit, quotable=quotable,
+                value=_round(value, dec) if quotable else None,
+                typical=_round(typical, dec) if quotable and typical is not None else None,
+                threshold=_round(det["threshold"], dec) if quotable else None,
+                severity=severity,
+                start_s=round(win[0] / FPS, 1) if win else None,
+                end_s=round(win[1] / FPS, 1) if win else None,
+                trust_mode=mode, trust_note=note, evidence=det.get("evidence", {}),
+            ))
+        # errors first (largest first), then the checks that passed
+        out.sort(key=lambda f: (f.status != "error", f.severity != "large"))
+        for i, f in enumerate(out, 1):
+            f.id = f"F{i}"
+        return out

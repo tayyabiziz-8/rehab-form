@@ -40,14 +40,13 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from rehabform.angles import compute_all  # noqa: E402
+from rehabform.session_features import features  # noqa: E402
 from rehabform.keraal import load_kinect_positions, resample_sequence  # noqa: E402
 from rehabform.keraal_groups import (  # noqa: E402
     annotation_labels, iter_annotated_recordings, load_blazepose_g12,
 )
 
-FPS = 10.0
-L_SH, R_SH, L_EL, R_EL, L_WR, R_WR, L_HIP, R_HIP = 11, 12, 13, 14, 15, 16, 23, 24
+L_SH, R_SH, L_EL, R_EL, L_HIP, R_HIP = 11, 12, 13, 14, 23, 24
 K_SPINE_BASE, K_SH_L, K_EL_L, K_SH_R, K_EL_R, K_SPINE_SH = 0, 4, 5, 8, 9, 20
 MIN_N = 4  # minimum recordings on each side before an AUC is reported
 
@@ -123,49 +122,6 @@ def report_agreement(labels: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 # features
 # ---------------------------------------------------------------------------
-def _p(x, q):
-    x = x[np.isfinite(x)]
-    return float(np.percentile(x, q)) if x.size else float("nan")
-
-
-def features(bp: np.ndarray) -> dict:
-    m = {k: v for k, (v, _ok) in compute_all(bp).items()}
-    T = len(bp)
-    P = bp[..., :2]
-    sw = np.nanmedian(np.linalg.norm(P[:, L_SH] - P[:, R_SH], axis=1))  # shoulder width, px
-    f = {"duration_s": T / FPS}
-
-    # how much the person moves (wrists, in shoulder widths)
-    f["movement"] = float(np.nanmean([np.nanstd(P[:, j], axis=0).sum() for j in (L_WR, R_WR)]) / sw)
-
-    p95 = {s: _p(m[f"arm_elevation_{s}"], 95) for s in "lr"}
-    hi = max(p95, key=lambda s: p95[s] if np.isfinite(p95[s]) else -1e9)
-    lo = "r" if hi == "l" else "l"
-    f["arm_peak_high"] = p95[hi]                 # the higher arm (ELK: the reaching arm)
-    f["arm_peak_low"] = p95[lo]                  # the other arm (ELK: should stay down)
-    f["arm_peak_mean"] = float(np.nanmean([p95["l"], p95["r"]]))   # CTK / RTK: both arms
-    f["arm_range_mean"] = float(np.nanmean([_p(m[f"arm_elevation_{s}"], 95) - _p(m[f"arm_elevation_{s}"], 5)
-                                            for s in "lr"]))
-    f["elbow_reach_p50"] = _p(m[f"elbow_flexion_{hi}"], 50)
-    f["elbow_reach_p95"] = _p(m[f"elbow_flexion_{hi}"], 95)
-    f["elbow_mean_p50"] = float(np.nanmean([_p(m[f"elbow_flexion_{s}"], 50) for s in "lr"]))
-
-    lean = m["trunk_lean"]
-    lean0 = np.nanmedian(lean[: max(3, T // 10)])                  # offset-free: change from start
-    f["lean_abs_p95"] = _p(np.abs(lean - lean0), 95)
-    f["lean_range"] = _p(lean, 95) - _p(lean, 5)
-    rot = m["trunk_rotation"]
-    f["rotation_range"] = _p(rot, 95) - _p(rot, 5)                 # timing-only measure: range is indicative
-
-    # spreads and heights in shoulder widths (CTK "arms not outspread" has no validated measure yet)
-    f["wrist_spread_p95"] = _p(np.linalg.norm(P[:, L_WR] - P[:, R_WR], axis=1) / sw, 95)
-    f["elbow_spread_p95"] = _p(np.linalg.norm(P[:, L_EL] - P[:, R_EL], axis=1) / sw, 95)
-    sh_y = (P[:, L_SH, 1] + P[:, R_SH, 1]) / 2
-    f["wrist_height_p95"] = _p((sh_y - np.minimum(P[:, L_WR, 1], P[:, R_WR, 1])) / sw, 95)   # + = above shoulders
-    f["elbow_height_p95"] = _p((sh_y - (P[:, L_EL, 1] + P[:, R_EL, 1]) / 2) / sw, 95)
-    return f
-
-
 # ---------------------------------------------------------------------------
 # side check against Kinect (ELK)
 # ---------------------------------------------------------------------------
