@@ -125,6 +125,7 @@ def main() -> None:
     win_hits, win_iou, sev_pairs, side_pairs = defaultdict(list), defaultdict(list), Counter(), Counter()
     win_chance, implied_fps = defaultdict(list), []
     win_source, win_anyrep, borderline = defaultdict(Counter), defaultdict(list), defaultdict(Counter)
+    win_debug = []
     t_reasons = Counter()
     fb = Counter()
     reasons = Counter()
@@ -170,8 +171,14 @@ def main() -> None:
                 elif correct:
                     det_stats[(f.detector, who)]["fp" if flagged else "tn"] += 1
             if flagged and err in a_types:
-                wins = [(w["start"] * scale, w["end"] * scale) for w in A.get("windows", [])
-                        if w["type"] == err and w["start"] is not None]
+                raw = [(w["start"], w["end"]) for w in A.get("windows", []) if w["type"] == err and w["start"] is not None]
+                wins = [(a * scale, b * scale) for a, b in raw]
+                win_debug.append({"key": r.key, "detector": f.detector, "frames": len(bp), "our_duration_s": len(bp) / FPS,
+                                  "anvil_span_end_s": span_end, "orig_fps_used": round(FPS / scale, 2),
+                                  "A_windows_anvil_s": json.dumps(raw), "A_windows_ours_s": json.dumps(
+                                      [(round(a, 1), round(b, 1)) for a, b in wins]),
+                                  "our_window_s": json.dumps([f.start_s, f.end_s]), "window_source": f.window_source,
+                                  "reps_s": json.dumps([(x["start_s"], x["end_s"]) for x in f.reps])})
                 if wins and f.start_s is not None:
                     best = max((overlap((f.start_s, f.end_s), w) for w in wins), key=lambda x: (x[0], x[1]))
                     win_hits[f.detector].append(best[0])
@@ -324,6 +331,12 @@ def main() -> None:
         w.writeheader()
         w.writerows(rows)
 
+    if win_debug:
+        with open(out / "pillar2_windows_debug.csv", "w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=list(win_debug[0]))
+            w.writeheader()
+            w.writerows(win_debug)
+        print(f"time-window details: {out / 'pillar2_windows_debug.csv'}")
     md = ["# Pillar 2 feedback examples", ""]
     for r, A, B, findings, row in examples:
         md += [f"## {r.key} ({r.exercise})", "",

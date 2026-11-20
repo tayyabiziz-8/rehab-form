@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from rehabform.findings import DEFAULT_THRESHOLDS, FindingsEngine  # noqa: E402
 from rehabform.keraal_groups import iter_annotated_recordings, load_blazepose_g12  # noqa: E402
 from rehabform.session_features import features  # noqa: E402
-from rehabform.video_pose import pose_from_video  # noqa: E402
+from rehabform.video_pose import cached_pose  # noqa: E402
 
 
 def main() -> None:
@@ -57,15 +57,8 @@ def main() -> None:
     for i, r in enumerate(sorted(recs, key=lambda r: r.key), 1):
         try:
             bp_ship, _ = load_blazepose_g12(r.blazepose)
-            cache = Path(args.cache) / f"{r.key}.npz"
             t0 = time.time()
-            if cache.exists():                       # landmarks from an earlier run: no MediaPipe needed
-                c = np.load(cache)
-                bp_mp, info = c["bp"], {"missing_fraction": float(c["missing"]), "swapped": bool(c["swapped"])}
-            else:
-                bp_mp, info = pose_from_video(r.video, args.model)
-                cache.parent.mkdir(parents=True, exist_ok=True)
-                np.savez_compressed(cache, bp=bp_mp, missing=info["missing_fraction"], swapped=info["swapped"])
+            bp_mp, info = cached_pose(r.video, args.model, args.cache, r.key)
             secs = time.time() - t0
             f_ship, f_mp = features(bp_ship), features(bp_mp)
             d_ship = {f.detector: f.status for f in engine.run(bp_ship, r.exercise)}

@@ -96,3 +96,20 @@ def load_landmarks_npz(path: str | Path, width: int, height: int) -> np.ndarray:
     d = np.load(path)
     img = d["image"][..., :3].astype(np.float32)
     return img * np.array([width, height, width], np.float32)
+
+
+def cached_pose(video: str | Path, model: str | Path, cache_dir: str | Path, key: str,
+                min_confidence: float = 0.5) -> tuple[np.ndarray, dict]:
+    """pose_from_video, saved as <cache_dir>/<key>.npz so a rerun needs no MediaPipe.
+    (Cache files from validate_mediapipe_keraal.py and pillar2_error_signals.py are shared.)"""
+    cache = Path(cache_dir) / f"{key}.npz"
+    if cache.exists():
+        c = np.load(cache)
+        bp = c["bp"]
+        missing = float(c["missing"]) if "missing" in c else float(np.isnan(bp[:, 11, 0]).mean())
+        return bp, {"missing_fraction": missing, "swapped": bool(c["swapped"]) if "swapped" in c else False,
+                    "frames_reversed": float("nan"), "cached": True}
+    bp, info = pose_from_video(video, model, min_confidence=min_confidence)
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(cache, bp=bp, missing=info["missing_fraction"], swapped=info["swapped"])
+    return bp, {**info, "cached": False}

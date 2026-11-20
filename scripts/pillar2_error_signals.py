@@ -45,6 +45,7 @@ from rehabform.keraal import load_kinect_positions, resample_sequence  # noqa: E
 from rehabform.keraal_groups import (  # noqa: E402
     annotation_labels, iter_annotated_recordings, load_blazepose_g12,
 )
+from rehabform.video_pose import cached_pose  # noqa: E402
 
 L_SH, R_SH, L_EL, R_EL, L_HIP, R_HIP = 11, 12, 13, 14, 23, 24
 K_SPINE_BASE, K_SH_L, K_EL_L, K_SH_R, K_EL_R, K_SPINE_SH = 0, 4, 5, 8, 9, 20
@@ -175,7 +176,15 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("roots", nargs="+")
     ap.add_argument("--out-dir", default="outputs")
+    ap.add_argument("--pose", choices=["shipped", "mediapipe"], default="shipped",
+                    help="shipped = Keraal's BlazePose files; mediapipe = our own MediaPipe run on the videos "
+                         "(what the app uses; cached in --mp-cache)")
+    ap.add_argument("--model", default=str(ROOT / "models" / "pose_landmarker_full.task"))
+    ap.add_argument("--mp-cache", default="outputs/mediapipe_cache")
+    ap.add_argument("--min-person", type=float, default=0.5,
+                    help="mediapipe: skip recordings where the person is found in fewer frames than this")
     args = ap.parse_args()
+    suffix = "" if args.pose == "shipped" else "_mediapipe"
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
@@ -185,11 +194,18 @@ def main() -> None:
     by_key = {r["key"]: r for r in labels}
 
     rows, side_stats, votes = [], Counter(), Counter()
+    skipped_person = []
     for i, r in enumerate(recs, 1):
-        if not r.blazepose:
+        if not (r.blazepose if args.pose == "shipped" else r.video):
             continue
         try:
-            bp, info = load_blazepose_g12(r.blazepose)
+            if args.pose == "shipped":
+                bp, info = load_blazepose_g12(r.blazepose)
+            else:
+                bp, info = cached_pose(r.video, args.model, args.mp_cache, r.key)
+                if 1 - info["missing_fraction"] < args.min_person:
+                    skipped_person.append(r.key)
+                    continue
         except Exception as exc:
             print(f"[skip] {r.key}: {exc}")
             continue
@@ -206,6 +222,10 @@ def main() -> None:
         if i % 50 == 0:
             print(f"processed {i}/{len(recs)}")
 
+    if skipped_person:
+        print(f"\n[mediapipe] {len(skipped_person)} recordings skipped, person found in < {args.min_person:.0%} "
+              f"of frames: {skipped_person[:8]}{' ...' if len(skipped_person) > 8 else ''}")
+    print(f"\n=== pose source: {args.pose} ({len(rows)} recordings with features)")
     print("\n=== left/right fix (after un-mirroring)")
     print(f"recordings whose BlazePose sides were swapped by geometry: {side_stats['swapped']} of "
           f"{sum(side_stats.values())}")
@@ -215,11 +235,11 @@ def main() -> None:
         print(f"frames still reversed within a recording: median {np.median(fr):.1%}, "
               f"recordings with >10%: {sum(x > 0.10 for x in fr)}")
 
-    with open(out / "keraal_labels.csv", "w", newline="", encoding="utf-8") as f:
+    with open(out / f"keraal_labels{suffix}.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(labels[0]))
         w.writeheader()
         w.writerows(labels)
-    with open(out / "keraal_features.csv", "w", newline="", encoding="utf-8") as f:
+    with open(out / f"keraal_features{suffix}.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader()
         w.writerows(rows)
@@ -249,12 +269,13 @@ def main() -> None:
             best = ", ".join(f"{fn} {d} {s:.2f}" for s, d, fn, _ in res[:4]) or f"too few (<{MIN_N})"
             print(f"{ex} {t:<18} n={len(pos):>3} vs {len(neg):>3} correct, {subj} subjects: {best}")
 
-    with open(out / "keraal_error_auc.csv", "w", newline="", encoding="utf-8") as f:
+    with open(out / f"keraal_error_auc{suffix}.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=["exercise", "error", "feature", "auc", "n_error", "n_correct",
                                           "subjects_error"])
         w.writeheader()
         w.writerows(auc_rows)
-    print(f"\nwrote {out/'keraal_labels.csv'}, {out/'keraal_features.csv'}, {out/'keraal_error_auc.csv'}")
+    print(f"\nwrote {out / f'keraal_labels{suffix}.csv'}, {out / f'keraal_features{suffix}.csv'}, "
+          f"{out / f'keraal_error_auc{suffix}.csv'}")
 
 
 if __name__ == "__main__":

@@ -45,7 +45,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # A detector feeds the findings engine only if it held up on people it was not fitted on
 MIN_BALANCED = 0.75   # leave-one-subject-out balanced accuracy
 MIN_PEOPLE = 4        # different people with the error
-MAX_FALSE_ALARM = 0.10   # borderline band: target share of both-Correct recordings still corrected
+MAX_SENS_LOSS = 0.10     # borderline band may cost at most 10 points of sensitivity (vs annotator A, in-sample)
+MIN_BAND = 5             # ... and must hold at least 5 rated recordings to say anything
 
 # Error meanings: Keraal's descriptions, matched to the 18 Nov signal ranking
 # (body part + which feature separates the error). 'reportable' = the feature
@@ -115,11 +116,14 @@ def as_float(v) -> float:
 def borderline_band(rows: list[dict], cfg: dict) -> float:
     """Choose a 'borderline' margin just past the threshold and print the trade-off.
 
-    Inside the band a recording is not corrected (clinician view only). The margin
-    is the smallest one that brings false alarms on recordings BOTH clinicians
-    called Correct to <= MAX_FALSE_ALARM, capped at half the distance to the
-    severity cut (so 'large' errors are never hidden). In-sample: a strictness
-    setting, not a validated accuracy figure."""
+    Inside the band a recording is not corrected (clinician view only). The band is
+    the zone just past the threshold where the two clinicians disagree MOST often:
+    among margins that cost at most MAX_SENS_LOSS of sensitivity and hold at least
+    MIN_BAND rated recordings, the one with the highest in-band disagreement (ties ->
+    the smaller margin). No such margin -> no band. Capped at half the distance to
+    the severity cut, so 'large' errors are never hidden. In-sample: a strictness
+    setting, not a validated accuracy figure. (20 Nov: the earlier rule, "smallest
+    margin with <= 10% false alarms", ran to the cap on CTK and hid half the errors.)"""
     ex, feat, d, thr = cfg["exercise"], cfg["feature"], cfg["direction"], cfg["threshold"]
     rr = [r for r in rows if r["exercise"] == ex]
     x = np.array([as_float(r[feat]) for r in rr])
@@ -135,19 +139,23 @@ def borderline_band(rows: list[dict], cfg: dict) -> float:
     steps = np.linspace(0, cap, 11) if cap > 0 else np.array([0.0])
     print(f"  borderline sweep for {cfg['exercise']} {feat} (threshold {thr:g}, flag {d}):")
     print(f"    {'margin':>7} {'sens vs A':>9} {'false alarms':>12} {'in band':>7} {'clinicians disagree in band':>27}")
-    chosen = None
+    rows_ = []
     for m in steps:
         hard = thr + sign * m
         flagged = flag(x, hard, d)
         band = flag(x, thr, d) & ~flagged
         sens = flagged[pos].mean() if pos.any() else float("nan")
         fa = flagged[both_ok].mean() if both_ok.any() else float("nan")
-        dis = disagree[band & rated].mean() if (band & rated).any() else float("nan")
+        n_rated = int((band & rated).sum())
+        dis = disagree[band & rated].mean() if n_rated else float("nan")
+        rows_.append((float(m), sens, fa, int(band.sum()), n_rated, dis))
         print(f"    {m:7.3f} {sens:9.0%} {fa:12.0%} {band.sum():7d} {dis:27.0%}")
-        if chosen is None and fa <= MAX_FALSE_ALARM:
-            chosen = float(m)
-    if chosen is None:
-        chosen = float(steps[-1])
+    sens0 = rows_[0][1]
+    ok = [r for r in rows_[1:] if np.isfinite(r[5]) and r[4] >= MIN_BAND and sens0 - r[1] <= MAX_SENS_LOSS + 1e-9]
+    chosen = 0.0
+    if ok:
+        best = max(r[5] for r in ok)
+        chosen = min(r[0] for r in ok if r[5] >= best - 1e-9)
     out_band = flag(x, thr + sign * chosen, d) | ~flag(x, thr, d)
     base = disagree[rated & out_band].mean() if (rated & out_band).any() else float("nan")
     print(f"    -> margin {chosen:.3f}; clinicians disagree on {base:.0%} of recordings outside the band")

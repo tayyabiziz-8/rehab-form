@@ -28,7 +28,7 @@ DEFAULT_THRESHOLDS = Path(__file__).resolve().parents[2] / "config" / "findings_
 
 # feature -> (trust-table measure or None, plain label, unit, decimals, is a change/range measure)
 FEATURE_INFO = {
-    "lean_range": ("trunk_lean", "sideways bend of your upper body", "°", 0, True),
+    "lean_range": ("trunk_lean", "side-to-side range of your upper-body bend", "°", 0, True),
     "lean_abs_p95": ("trunk_lean", "sideways bend of your upper body", "°", 0, True),
     "rotation_range": ("trunk_rotation", "twist of your upper body", "°", 0, True),
     "arm_peak_mean": ("arm_elevation", "height of your arms", "°", 0, False),
