@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from rehabform.feedback import EXERCISES, LLMClient, load_env_file, strip_tags, write_feedback  # noqa: E402
-from rehabform.findings import DEFAULT_THRESHOLDS, FindingsEngine  # noqa: E402
+from rehabform.findings import APP_THRESHOLDS, FindingsEngine  # noqa: E402
 from rehabform.session_features import FPS, series  # noqa: E402
 from rehabform.video_pose import pose_from_video  # noqa: E402
 
@@ -160,7 +160,8 @@ def main() -> None:
                     help="MediaPipe detection/tracking confidence (default 0.5; try 0.3 if the person is often lost)")
     ap.add_argument("--contact-sheet", action="store_true",
                     help="also save 12 frames with the skeleton (or 'NOT FOUND') to see why frames are missed")
-    ap.add_argument("--thresholds", default=str(DEFAULT_THRESHOLDS))
+    ap.add_argument("--thresholds", default=str(APP_THRESHOLDS),
+                    help="default: config/findings_thresholds_mediapipe.json if present (fitted on our own MediaPipe)")
     ap.add_argument("--llm", action="store_true")
     ap.add_argument("--base-url")
     ap.add_argument("--model-name", "--llm-model", dest="llm_model")

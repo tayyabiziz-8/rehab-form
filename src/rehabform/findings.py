@@ -25,6 +25,10 @@ from .session_features import FPS, features, peak_window, segment_reps, series
 STRICTNESS = {"strict": 0.0, "standard": 1.0, "lenient": 2.0}   # x the fitted borderline band
 MIN_VALID_FRACTION = 0.5   # a check needs its measure in at least half of the frames
 DEFAULT_THRESHOLDS = Path(__file__).resolve().parents[2] / "config" / "findings_thresholds.json"
+# The app runs our own MediaPipe, and thresholds fitted on Keraal's shipped BlazePose do not transfer
+# (21 Nov: side-bend r 0.21 between the two). Use the MediaPipe-fitted file when it exists.
+MEDIAPIPE_THRESHOLDS = DEFAULT_THRESHOLDS.with_name("findings_thresholds_mediapipe.json")
+APP_THRESHOLDS = MEDIAPIPE_THRESHOLDS if MEDIAPIPE_THRESHOLDS.exists() else DEFAULT_THRESHOLDS
 
 # feature -> (trust-table measure or None, plain label, unit, decimals, is a change/range measure)
 FEATURE_INFO = {

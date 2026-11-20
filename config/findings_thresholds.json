@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "date": "2026-11-20",
+  "date": "2026-11-21",
   "source": "Keraal 1A + 2A, annotator A error labels vs both-Correct; thresholds fitted on all subjects, evidence from leave-one-subject-out",
   "detectors": {
     "CTK_arms_not_raised": {
@@ -27,7 +27,7 @@
         "n_correct": 55,
         "people_error": 8
       },
-      "borderline_margin": 0.181
+      "borderline_margin": 0.036
     },
     "CTK_error3": {
       "usable": false,
@@ -79,7 +79,7 @@
         "n_correct": 15,
         "people_error": 5
       },
-      "borderline_margin": 0.0
+      "borderline_margin": 1.13
     },
     "RTK_arms_not_raised": {
       "usable": false,

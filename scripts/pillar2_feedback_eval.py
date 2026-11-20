@@ -63,7 +63,39 @@ def overlap(a: tuple[float, float], b: tuple[float, float], slack: float = 0.5) 
 
 
 ORIG_FPS_RANGE = (12.0, 30.0)   # plausible original video rates
-ORIG_FPS_TYPICAL = 19.3         # median over 1A + 2A (20 Nov run)
+
+
+def estimate_clocks(recs) -> tuple[dict, float, int]:
+    """Original frame rate per recording, for mapping clinician times (Anvil seconds, original clock)
+    onto the shipped mp4 (same frames played at 10 fps).
+
+    A recording's own estimate = frames / its global-evaluation span, used only when that span is a
+    plausible whole-video span: a rate in ORIG_FPS_RANGE and long enough to contain A's windows.
+    Others get the median of the plausible ones, capped so A's last window still fits in the video.
+    (21 Nov: many spans are 1-9 s for 30-50 s videos, i.e. not the whole video.)"""
+    import json as _json
+    info, plaus = {}, []
+    for r in recs:
+        try:
+            with open(r.blazepose, encoding="utf-8") as fh:
+                n = len(_json.load(fh)["positions"])
+        except Exception:
+            continue
+        a = annotation_labels(r.annotations["A"]) if "A" in r.annotations else {}
+        span = (a.get("span") or (None, None))[1]
+        ends = [w["end"] for w in a.get("windows", []) if w.get("end") is not None]
+        last = max(ends) if ends else 0.0
+        fps = n / span if span else float("nan")
+        ok = bool(np.isfinite(fps) and ORIG_FPS_RANGE[0] <= fps <= ORIG_FPS_RANGE[1] and span >= last)
+        info[r.key] = {"frames": n, "fps": fps if ok else None, "cap": n / last if last > 0 else float("inf")}
+        if ok:
+            plaus.append(fps)
+    typical = float(np.median(plaus)) if plaus else 15.0
+    for v in info.values():
+        if v["fps"] is None:
+            v["fps"] = min(typical, v["cap"])
+            v["fallback"] = True
+    return info, typical, len(plaus)
 
 
 def chance_overlap(length: float, total: float, windows: list[tuple[float, float]], slack: float = 0.5) -> float:
@@ -116,6 +148,9 @@ def main() -> None:
                         reasoning_effort=args.reasoning_effort)
 
     recs = [r for root in args.roots for r in iter_annotated_recordings(root) if r.blazepose]
+    clocks, clock_typical, n_plausible = estimate_clocks(recs)
+    print(f"clinician clock: {n_plausible} recordings have a plausible whole-video span; "
+          f"their median original rate {clock_typical:.1f} fps is used for the others")
     llm_keys = {r.key for r in recs}
     if llm and args.limit:
         llm_keys = set(random.Random(0).sample(sorted(llm_keys), min(args.limit, len(llm_keys))))
@@ -145,13 +180,11 @@ def main() -> None:
         # Some global-evaluation spans do not cover the recording (implied rates of 0.2 or 900 fps were seen);
         # then use the typical original rate. 19.3 fps median matches the 19.4 Hz found for Group 3.
         span_end = (A.get("span") or (None, None))[1]
-        fps_orig = len(bp) / span_end if span_end else float("nan")
-        if np.isfinite(fps_orig):
-            implied_fps.append(fps_orig)
-        if not (ORIG_FPS_RANGE[0] <= fps_orig <= ORIG_FPS_RANGE[1]):
-            fps_orig = ORIG_FPS_TYPICAL
-            fb["clock_fallback"] += 1
-        scale = FPS / fps_orig
+        ck = clocks.get(r.key, {"fps": clock_typical})
+        fps_orig = ck["fps"]
+        implied_fps.append(fps_orig)
+        fb["clock_fallback"] += bool(ck.get("fallback"))
+        scale = fps_orig / FPS          # Anvil seconds x original fps = frame index; / 10 fps = mp4 seconds
         a_types = {e["type"] for e in A.get("errors", [])} if A.get("evaluation") == "Incorrect" else set()
         b_types = {e["type"] for e in B.get("errors", [])} if B.get("evaluation") == "Incorrect" else set()
         a_correct, b_correct = A.get("evaluation") == "Correct", B.get("evaluation") == "Correct"
@@ -174,7 +207,7 @@ def main() -> None:
                 raw = [(w["start"], w["end"]) for w in A.get("windows", []) if w["type"] == err and w["start"] is not None]
                 wins = [(a * scale, b * scale) for a, b in raw]
                 win_debug.append({"key": r.key, "detector": f.detector, "frames": len(bp), "our_duration_s": len(bp) / FPS,
-                                  "anvil_span_end_s": span_end, "orig_fps_used": round(FPS / scale, 2),
+                                  "anvil_span_end_s": span_end, "orig_fps_used": round(fps_orig, 2),
                                   "A_windows_anvil_s": json.dumps(raw), "A_windows_ours_s": json.dumps(
                                       [(round(a, 1), round(b, 1)) for a, b in wins]),
                                   "our_window_s": json.dumps([f.start_s, f.end_s]), "window_source": f.window_source,
@@ -258,9 +291,9 @@ def main() -> None:
         print(f"  {det:<24} vs {who}: sens {sens:.0%} spec {spec:.0%} precision {prec:.0%}  (tp {tp} fn {fn} fp {fp} tn {tn})")
 
     if implied_fps:
-        print(f"\n=== Anvil clock: frames / annotated duration = median {np.median(implied_fps):.1f} fps "
+        print(f"\n=== clinician clock: original rate used = median {np.median(implied_fps):.1f} fps "
               f"(range {np.min(implied_fps):.1f}-{np.max(implied_fps):.1f}); mp4 plays at {FPS:g}. Windows rescaled; "
-              f"{fb['clock_fallback']} recordings outside {ORIG_FPS_RANGE} used {ORIG_FPS_TYPICAL} fps.")
+              f"{fb['clock_fallback']} recordings used the median {clock_typical:.1f} fps (capped so A's windows fit).")
     print("\n=== time window vs annotator A's 'Temporal error' (true positives with a window)")
     for det in sorted(win_hits):
         h, iou = win_hits[det], win_iou[det]

@@ -31,7 +31,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from rehabform.feedback import (  # noqa: E402
     EXERCISES, NOT_SEEN_TEXT, LLMClient, load_env_file, split_for_app, write_feedback,
 )
-from rehabform.findings import DEFAULT_THRESHOLDS, STRICTNESS, FindingsEngine  # noqa: E402
+from rehabform.findings import APP_THRESHOLDS, STRICTNESS, FindingsEngine  # noqa: E402
 from rehabform.keraal_groups import canonical_sides  # noqa: E402
 from rehabform.session_features import FPS, series  # noqa: E402
 
@@ -203,7 +203,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--host", default="127.0.0.1", help="0.0.0.0 to allow phones on the same Wi-Fi (see README)")
-    ap.add_argument("--thresholds", default=str(DEFAULT_THRESHOLDS))
+    ap.add_argument("--thresholds", default=str(APP_THRESHOLDS),
+                    help="default: config/findings_thresholds_mediapipe.json if present (fitted on our own MediaPipe)")
     ap.add_argument("--llm", action="store_true", help="let requests with use_llm=true get a checked LLM draft")
     ap.add_argument("--base-url")
     ap.add_argument("--llm-model")
@@ -221,6 +222,7 @@ def main() -> None:
         raise SystemExit(f"{args.thresholds} not found: run scripts/pillar2_detectors.py first")
     app = App(Path(args.thresholds), llm)
     srv = ThreadingHTTPServer((args.host, args.port), make_handler(app))
+    print(f"thresholds: {args.thresholds}")
     print(f"serving on http://{'localhost' if args.host in ('127.0.0.1', '0.0.0.0') else args.host}:{args.port}  "
           f"(validated checks: { {k: [c['id'] for c in v] for k, v in app.validated().items()} }, "
           f"LLM: {'on' if llm else 'off'})")
