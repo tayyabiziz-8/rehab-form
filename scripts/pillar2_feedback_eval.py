@@ -46,7 +46,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from rehabform.claims import DETECTOR_CATEGORY, check, error_categories  # noqa: E402
-from rehabform.feedback import LLMClient, baseline_prompt, strip_tags, template_feedback, write_feedback  # noqa: E402
+from rehabform.feedback import (  # noqa: E402
+    LLMClient, RateLimited, baseline_prompt, load_env_file, strip_tags, template_feedback, write_feedback,
+)
+from rehabform.session_features import FPS  # noqa: E402
 from rehabform.findings import DEFAULT_THRESHOLDS, FindingsEngine  # noqa: E402
 from rehabform.keraal_groups import annotation_labels, iter_annotated_recordings, load_blazepose_g12  # noqa: E402
 
@@ -59,8 +62,20 @@ def overlap(a: tuple[float, float], b: tuple[float, float], slack: float = 0.5) 
     return hit, (inter / union if union > 0 else 0.0)
 
 
+ORIG_FPS_RANGE = (12.0, 30.0)   # plausible original video rates
+ORIG_FPS_TYPICAL = 19.3         # median over 1A + 2A (20 Nov run)
+
+
+def chance_overlap(length: float, total: float, windows: list[tuple[float, float]], slack: float = 0.5) -> float:
+    """Probability that a window of this length, placed anywhere, overlaps one of the windows."""
+    if total <= length:
+        return 1.0
+    starts = np.linspace(0, total - length, 200)
+    return float(np.mean([any(overlap((s, s + length), w, slack)[0] for w in windows) for s in starts]))
+
+
 def main() -> None:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)  # progress visible in a redirected file
     warnings.filterwarnings("ignore", category=RuntimeWarning)
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("roots", nargs="+")
@@ -69,7 +84,11 @@ def main() -> None:
     ap.add_argument("--baseline", action="store_true", help="also run the pose-only baseline (needs --llm)")
     ap.add_argument("--base-url")
     ap.add_argument("--model")
-    ap.add_argument("--api-key-env")
+    ap.add_argument("--api-key-env", help="name of the environment variable (or .env entry) holding the key")
+    ap.add_argument("--env-file", default=".env")
+    ap.add_argument("--reasoning-effort", choices=["low", "medium", "high"],
+                    help="for reasoning models such as gpt-oss (low = fewer tokens, fewer empty replies)")
+    ap.add_argument("--list-models", action="store_true", help="print the endpoint's models and stop")
     ap.add_argument("--limit", type=int, default=0, help="LLM runs on a random sample of this many recordings")
     ap.add_argument("--examples", type=int, default=12)
     ap.add_argument("--out-dir", default="outputs")
@@ -77,14 +96,24 @@ def main() -> None:
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
+    load_env_file(args.env_file)
+    if args.list_models:
+        if not args.base_url:
+            raise SystemExit("--list-models needs --base-url")
+        for m in LLMClient(args.base_url, "none", args.api_key_env, cache_path=out / "llm_cache.jsonl").list_models():
+            print(m)
+        return
     if not Path(args.thresholds).exists():
         raise SystemExit(f"{args.thresholds} not found: run scripts/pillar2_detectors.py first")
     engine = FindingsEngine(args.thresholds)
+    all_detectors = json.loads(Path(args.thresholds).read_text(encoding="utf-8"))["detectors"]  # incl. unused
+    print("detectors used:", sorted(engine.detectors), "| not used:", sorted(set(all_detectors) - set(engine.detectors)))
     llm = None
     if args.llm:
         if not (args.base_url and args.model):
             raise SystemExit("--llm needs --base-url and --model")
-        llm = LLMClient(args.base_url, args.model, args.api_key_env, cache_path=out / "llm_cache.jsonl")
+        llm = LLMClient(args.base_url, args.model, args.api_key_env, cache_path=out / "llm_cache.jsonl",
+                        reasoning_effort=args.reasoning_effort)
 
     recs = [r for root in args.roots for r in iter_annotated_recordings(root) if r.blazepose]
     llm_keys = {r.key for r in recs}
@@ -94,9 +123,11 @@ def main() -> None:
     rows, examples = [], []
     det_stats = defaultdict(Counter)
     win_hits, win_iou, sev_pairs, side_pairs = defaultdict(list), defaultdict(list), Counter(), Counter()
+    win_chance, implied_fps = defaultdict(list), []
+    t_reasons = Counter()
     fb = Counter()
     reasons = Counter()
-    cat_stats = {m: Counter() for m in ("template", "grounded", "baseline")}
+    per_mode: dict[str, dict] = {m: {} for m in ("template", "grounded", "baseline")}
 
     for i, r in enumerate(recs, 1):
         try:
@@ -107,6 +138,18 @@ def main() -> None:
         lab = {k: annotation_labels(p) for k, p in r.annotations.items()}
         A, B = lab.get("A", {}), lab.get("B", {})
         findings = engine.run(bp, r.exercise)
+        # Anvil times are on the ORIGINAL video's clock; the shipped mp4 has the same frames played at 10 fps.
+        # Map Anvil seconds -> our seconds with the global-evaluation span (= whole recording).
+        # Some global-evaluation spans do not cover the recording (implied rates of 0.2 or 900 fps were seen);
+        # then use the typical original rate. 19.3 fps median matches the 19.4 Hz found for Group 3.
+        span_end = (A.get("span") or (None, None))[1]
+        fps_orig = len(bp) / span_end if span_end else float("nan")
+        if np.isfinite(fps_orig):
+            implied_fps.append(fps_orig)
+        if not (ORIG_FPS_RANGE[0] <= fps_orig <= ORIG_FPS_RANGE[1]):
+            fps_orig = ORIG_FPS_TYPICAL
+            fb["clock_fallback"] += 1
+        scale = FPS / fps_orig
         a_types = {e["type"] for e in A.get("errors", [])} if A.get("evaluation") == "Incorrect" else set()
         b_types = {e["type"] for e in B.get("errors", [])} if B.get("evaluation") == "Incorrect" else set()
         a_correct, b_correct = A.get("evaluation") == "Correct", B.get("evaluation") == "Correct"
@@ -120,12 +163,13 @@ def main() -> None:
                 elif correct:
                     det_stats[(f.detector, who)]["fp" if flagged else "tn"] += 1
             if flagged and err in a_types:
-                wins = [w for w in A.get("windows", []) if w["type"] == err and w["start"] is not None]
+                wins = [(w["start"] * scale, w["end"] * scale) for w in A.get("windows", [])
+                        if w["type"] == err and w["start"] is not None]
                 if wins and f.start_s is not None:
-                    best = max((overlap((f.start_s, f.end_s), (w["start"], w["end"])) for w in wins),
-                               key=lambda x: (x[0], x[1]))
+                    best = max((overlap((f.start_s, f.end_s), w) for w in wins), key=lambda x: (x[0], x[1]))
                     win_hits[f.detector].append(best[0])
                     win_iou[f.detector].append(best[1])
+                    win_chance[f.detector].append(chance_overlap(f.end_s - f.start_s, len(bp) / FPS, wins))
                 a_err = next(e for e in A["errors"] if e["type"] == err)
                 if f.severity and a_err.get("severity"):
                     sev_pairs[(f.severity, a_err["severity"])] += 1
@@ -137,7 +181,8 @@ def main() -> None:
         t_rep = check(tmpl, findings)
         fb["template_total"] += 1
         fb["template_pass"] += t_rep.ok
-        labelled_cats = {DETECTOR_CATEGORY.get(d) for d, det in engine.detectors.items()
+        t_reasons.update(t_rep.reasons())
+        labelled_cats = {DETECTOR_CATEGORY.get(d) for d, det in all_detectors.items()
                          if det["exercise"] == r.exercise and det["keraal_error"] in (a_types | b_types)}
         any_correct_label = a_correct or b_correct
         row = {"key": r.key, "exercise": r.exercise, "eval_A": A.get("evaluation"), "eval_B": B.get("evaluation"),
@@ -147,34 +192,35 @@ def main() -> None:
                                        for f in findings]),
                "template": strip_tags(tmpl), "template_ok": t_rep.ok}
 
+        both_correct = a_correct and b_correct
+        labelled = labelled_cats - {None}
+
         def score(mode: str, text: str) -> None:
-            cats = error_categories(text)
-            st = cat_stats[mode]
-            st["n"] += 1
-            st["claims"] += len(cats)
-            st["claims_on_correct"] += len(cats) if (a_correct and b_correct) else 0
-            st["both_correct"] += a_correct and b_correct
-            st["labelled_errors"] += len(labelled_cats - {None})
-            st["hits"] += len(cats & labelled_cats)
+            per_mode[mode][r.key] = (error_categories(text), both_correct, labelled)
 
         score("template", tmpl)
         if llm and r.key in llm_keys:
             try:
                 res = write_feedback(findings, r.exercise, llm)
-                fb["llm_total"] += 1
-                fb["llm_draft_pass"] += res.source == "llm"
-                fb["llm_draft_sentences"] += len(res.draft_report.sentences)
-                fb["llm_draft_unsupported"] += res.draft_report.n_unsupported
-                reasons.update(x.split(":")[0] for x in res.draft_report.reasons())
-                fb["final_pass"] += res.report.ok
-                row.update(grounded_draft=res.draft, grounded_draft_ok=res.draft_report.ok,
-                           grounded_draft_reasons="|".join(res.draft_report.reasons()),
-                           grounded_final=strip_tags(res.text), grounded_source=res.source)
-                score("grounded", res.draft)
+                if res.draft is not None:                  # an LLM call was made (exercise has findings)
+                    fb["llm_total"] += 1
+                    fb["llm_draft_pass"] += res.source == "llm"
+                    fb["llm_draft_sentences"] += len(res.draft_report.sentences)
+                    fb["llm_draft_unsupported"] += res.draft_report.n_unsupported
+                    reasons.update(x.split(":")[0] for x in res.draft_report.reasons())
+                    fb["final_pass"] += res.report.ok
+                    row.update(grounded_draft=res.draft, grounded_draft_ok=res.draft_report.ok,
+                               grounded_draft_reasons="|".join(res.draft_report.reasons()))
+                else:
+                    fb["llm_no_findings"] += 1
+                row.update(grounded_final=strip_tags(res.text), grounded_source=res.source)
+                score("grounded", res.text)                # what the patient would see
                 if args.baseline:
                     base = llm(baseline_prompt(bp, r.exercise))
                     row["baseline"] = base
                     score("baseline", base)
+            except RateLimited as exc:
+                raise SystemExit(f"\n[stopped] {exc}")
             except Exception as exc:
                 print(f"[llm error] {r.key}: {exc}")
                 fb["llm_errors"] += 1
@@ -193,10 +239,15 @@ def main() -> None:
         prec = tp / (tp + fp) if tp + fp else float("nan")
         print(f"  {det:<24} vs {who}: sens {sens:.0%} spec {spec:.0%} precision {prec:.0%}  (tp {tp} fn {fn} fp {fp} tn {tn})")
 
+    if implied_fps:
+        print(f"\n=== Anvil clock: frames / annotated duration = median {np.median(implied_fps):.1f} fps "
+              f"(range {np.min(implied_fps):.1f}-{np.max(implied_fps):.1f}); mp4 plays at {FPS:g}. Windows rescaled; "
+              f"{fb['clock_fallback']} recordings outside {ORIG_FPS_RANGE} used {ORIG_FPS_TYPICAL} fps.")
     print("\n=== time window vs annotator A's 'Temporal error' (true positives with a window)")
     for det in sorted(win_hits):
         h, iou = win_hits[det], win_iou[det]
-        print(f"  {det:<24} overlap {np.mean(h):.0%} of {len(h)}, median IoU {np.median(iou):.2f}")
+        print(f"  {det:<24} overlap {np.mean(h):.0%} of {len(h)} (a randomly placed window: "
+              f"{np.mean(win_chance[det]):.0%}), median IoU {np.median(iou):.2f}")
     if sev_pairs:
         print("\n=== severity: ours vs A")
         for (ours, theirs), n in sorted(sev_pairs.items()):
@@ -210,22 +261,43 @@ def main() -> None:
 
     print("\n=== feedback")
     print(f"  template: passes the claim checker {fb['template_pass']}/{fb['template_total']} (must be all)")
+    if t_reasons:
+        print(f"  template failures (bug, please send): {dict(t_reasons.most_common(8))}")
     if fb["llm_total"]:
         print(f"  grounded LLM drafts: {fb['llm_draft_pass']}/{fb['llm_total']} pass the checker; "
               f"unsupported sentences {fb['llm_draft_unsupported']}/{fb['llm_draft_sentences']} "
               f"({fb['llm_draft_unsupported'] / max(fb['llm_draft_sentences'], 1):.1%})")
         print(f"  rejection reasons: {dict(reasons.most_common())}")
+        print(f"  ({fb['llm_no_findings']} sampled recordings had no validated checks: no LLM call, "
+              f"the patient sees the 'no checks yet' message)")
         print(f"  after checker + template fallback: {fb['final_pass']}/{fb['llm_total']} pass "
               f"(unsupported claims shown to the patient: 0)")
     if fb["llm_errors"]:
         print(f"  LLM call errors: {fb['llm_errors']}")
-    print("\n=== what each writer asks the patient to correct vs clinician labels (approximate keyword categories)")
-    for mode, st in cat_stats.items():
-        if not st["n"]:
-            continue
-        print(f"  {mode:<9} n={st['n']:>3}: corrections {st['claims']}, of which on recordings BOTH called Correct "
-              f"{st['claims_on_correct']} ({st['both_correct']} such recordings); "
-              f"labelled errors addressed {st['hits']}/{st['labelled_errors']}")
+    print("\n=== what each writer tells the patient to correct vs the clinicians (approximate keyword categories)")
+    print("    'false alarms' = recordings BOTH clinicians called Correct that still got a correction")
+
+    def summary(mode: str, keys) -> str:
+        recs_ = [per_mode[mode][k] for k in keys]
+        bc = [c for c, both, _l in recs_ if both]
+        lab = sum(len(l) for _c, _b, l in recs_)
+        hit = sum(len(c & l) for c, _b, l in recs_)
+        fa = sum(1 for c in bc if c)
+        return (f"n={len(recs_):>3}: false alarms {fa}/{len(bc)} ({fa / max(len(bc), 1):.0%}), "
+                f"labelled errors addressed {hit}/{lab} ({hit / max(lab, 1):.0%})")
+
+    for mode in ("template", "grounded", "baseline"):
+        if per_mode[mode]:
+            print(f"  {mode:<9} all: {summary(mode, list(per_mode[mode]))}")
+    paired = set(per_mode["template"])
+    for mode in ("grounded", "baseline"):
+        if per_mode[mode]:
+            paired &= set(per_mode[mode])
+    if len(paired) < len(per_mode["template"]):
+        print(f"  same recordings for every writer ({len(paired)}):")
+        for mode in ("template", "grounded", "baseline"):
+            if per_mode[mode]:
+                print(f"    {mode:<9} {summary(mode, sorted(paired))}")
 
     with open(out / "pillar2_feedback_per_recording.csv", "w", newline="", encoding="utf-8") as f:
         fields = sorted({k for r in rows for k in r}, key=lambda k: list(rows[0]).index(k) if k in rows[0] else 99)

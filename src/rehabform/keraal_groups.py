@@ -232,12 +232,13 @@ def annotation_labels(path: str | Path) -> dict:
       'Temporal error'    / same attributes, with the time window where it happens
     """
     els = read_anvil(path)["elements"]
-    out = {"evaluation": None, "errors": [], "windows": []}
+    out = {"evaluation": None, "errors": [], "windows": [], "span": None}
     for e in els:
         track = (e["track"] or "").lower()
         a = e["attributes"]
         if track.startswith("global evaluation"):
             out["evaluation"] = a.get("evaluation") or next(iter(a.values()), None)
+            out["span"] = (e["start"], e["end"])   # whole recording, in Anvil seconds
         elif track.startswith("global error"):
             if a.get("type") and a.get("type") != "none":
                 out["errors"].append({"type": a.get("type"), "severity": a.get("Evaluation"),

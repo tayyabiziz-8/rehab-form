@@ -42,6 +42,10 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# A detector feeds the findings engine only if it held up on people it was not fitted on
+MIN_BALANCED = 0.75   # leave-one-subject-out balanced accuracy
+MIN_PEOPLE = 4        # different people with the error
+
 # Error meanings: Keraal's descriptions, matched to the 18 Nov signal ranking
 # (body part + which feature separates the error). 'reportable' = the feature
 # is a validated measure that may be shown to the user as a number
@@ -194,7 +198,14 @@ def main() -> None:
             _, feat, direction, reportable, unit, t_all, sens, spec, k_ab, k_sa, k_sb, vals, mono = best_for_config
             # severity: between the Small and Large medians, only if the feature orders severity
             cut = round((vals[1] + vals[2]) / 2, 3) if mono else None
+            people_err = len(set(people[is_pos]))
+            usable = bool((sens + spec) / 2 >= MIN_BALANCED and people_err >= MIN_PEOPLE)
+            why = "ok" if usable else (f"only {people_err} people with this error" if people_err < MIN_PEOPLE
+                                       else f"leave-one-subject-out balanced accuracy {(sens + spec) / 2:.0%} < "
+                                            f"{MIN_BALANCED:.0%}")
+            print(f"  -> config: {feat} ({'USED' if usable else 'NOT USED: ' + why})")
             thresholds[det["id"]] = {
+                "usable": usable, "usable_reason": why,
                 "exercise": ex, "keraal_error": err, "meaning": det["meaning"], "body_part": det["body_part"],
                 "feature": feat, "direction": direction, "threshold": round(t_all, 3), "unit": unit,
                 "reportable": reportable,
@@ -203,7 +214,7 @@ def main() -> None:
                 "evidence": {"loso_sensitivity": round(sens, 3), "loso_specificity": round(spec, 3),
                              "kappa_clinicians": round(k_ab, 3), "kappa_system_A": round(k_sa, 3),
                              "kappa_system_B": round(k_sb, 3), "n_error": int(is_pos.sum()),
-                             "n_correct": int(is_neg.sum()), "people_error": len(set(people[is_pos]))},
+                             "n_correct": int(is_neg.sum()), "people_error": people_err},
             }
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)

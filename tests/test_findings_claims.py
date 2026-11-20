@@ -107,6 +107,25 @@ def test_checker_rejects_invented_claims():
     assert check("Your left arm went up well. [F2]", f).ok                  # side backed by F2
 
 
+def test_checker_catches_what_gpt_oss_20b_wrote_on_20_nov():
+    """Real drafts from the first Groq run that the first checker let through."""
+    arms = dict(detector="CTK_arms_not_raised", exercise="CTK", issue="arms not raised enough",
+                body_part="BothArms", feature="wrist_height_p95",
+                measure_label="height of your hands above your shoulders", unit="shoulder widths",
+                threshold=0.8, severity=None, start_s=14.4, end_s=16.4, trust_mode=None)
+    ok = _finding(id="F1", status="ok", advice="your arms reached a good height", quotable=True,
+                  value=0.9, typical=1.0, **arms)
+    err = _finding(id="F1", status="error", advice="raise your arms higher", quotable=True,
+                   value=0.8, typical=1.0, **{**arms, "severity": "small"})
+    assert not check("Your arms were not raised enough. [F1] Your arms reached a good height. [F1]", [ok]).ok
+    assert not check("You reached a good height with your arms. [F1]", [err]).ok        # praise for an error
+    assert not check("Try raising your arms higher to reach about 1.0. [F1]", [err]).ok  # no unit
+    assert check("Try raising your arms higher, aiming for about 1 shoulder width instead of the "
+                 "0.8 shoulder widths you reached. [F1]", [err]).ok
+    assert check("Raise your arms higher. [F1]", [err]).ok
+    assert check("Your arms reached a good height. [F1]", [ok]).ok
+
+
 def test_error_categories_for_the_baseline():
     assert error_categories("Try to raise your arms higher.") == {"arms_height"}
     assert error_categories("Lean your body further to the side.") == {"trunk_tilt"}

@@ -7,7 +7,8 @@ Rules (a sentence fails on the first that applies; all reasons are listed)
     (numbers of non-quotable findings are never allowed)
   * a body part the cited findings are not about              -> unsupported_body_part
   * 'left' / 'right' when the cited findings have no such side -> unsupported_side
-  * corrective wording while every cited finding passed       -> contradicts_finding
+  * a problem claimed for a passed check, or praise for a failed one -> contradicts_finding
+  * a quoted number without its unit (° / shoulder widths / s)  -> number_without_unit
   * medical claims (pain, injury, diagnosis, ...)             -> out_of_scope
 
 Sentences with no number, body part or side and no citation (e.g. "Keep it
@@ -110,7 +111,21 @@ def _body_terms(text: str) -> list[str]:
 
 
 def _matches(x: float, allowed: list[float]) -> bool:
-    return any(abs(x - a) <= (0.5 if float(a).is_integer() else 0.05) for a in allowed)
+    # sizes are compared (a sentence may say "0.3 below your shoulders" for a finding of -0.3)
+    return any(abs(abs(x) - abs(a)) <= (0.5 if float(a).is_integer() else 0.05) for a in allowed)
+
+
+_PROBLEM = re.compile(r"\bnot\b[^.]*\b(enough|high|far|raised|bent|tilted|turned|straight|reach(ed)?)\b|"
+                      r"\btoo (low|little|small|short|stiff)\b|\b(lower|less) than\b|\bfell short\b")
+_PRAISE = re.compile(r"\b(good|great|well done|nicely|nice|excellent|perfect)\b")
+
+
+def _says_problem(low: str) -> bool:
+    return any(c in low for c in CORRECTIVE) or bool(_PROBLEM.search(low))
+
+
+def _says_fine(low: str) -> bool:
+    return bool(_PRAISE.search(low)) and not _says_problem(low) and not re.search(r"\b(but|however)\b", low)
 
 
 def check(text: str, findings: list[Finding]) -> CheckReport:
@@ -135,9 +150,21 @@ def check(text: str, findings: list[Finding]) -> CheckReport:
             out.append(SentenceCheck(sent, cites, not reasons, "generic" if not reasons else "rejected", reasons))
             continue
         allowed = [a for f in cited for a in f.allowed_numbers()]
+        times = [t for f in cited for t in (f.start_s, f.end_s) if t is not None]
+        measured = [(v, f.unit) for f in cited if f.quotable for v in (f.value, f.typical) if v is not None]
         for x in nums:
             if not _matches(x, allowed):
                 reasons.append(f"unsupported_number:{x:g}")
+                continue
+            # a quoted number must carry its unit, or it can be read as something else ("aim for 1.0")
+            units_ok = []
+            if _matches(x, times):
+                units_ok.append(bool(re.search(r"\d\s*(s|sec|secs|seconds?)\b", low) or "second" in low))
+            for v, unit in measured:
+                if _matches(x, [v]):
+                    units_ok.append(("°" in body or "degree" in low) if unit == "°" else (unit[:-1] in low))
+            if units_ok and not any(units_ok):
+                reasons.append(f"number_without_unit:{x:g}")
         parts = {f.body_part for f in cited}
         for term in terms:
             if not (BODY_TERMS[term] & parts):
@@ -147,8 +174,10 @@ def check(text: str, findings: list[Finding]) -> CheckReport:
         for s in sides:
             if s not in cited_sides:
                 reasons.append(f"unsupported_side:{s}")
-        if cited and all(f.status == "ok" for f in cited) and any(c in low for c in CORRECTIVE):
-            reasons.append("contradicts_finding")
+        if cited and all(f.status == "ok" for f in cited) and _says_problem(low):
+            reasons.append("contradicts_finding")          # a problem claimed for a check that passed
+        elif cited and all(f.status == "error" for f in cited) and _says_fine(low):
+            reasons.append("contradicts_finding")          # praise for a check that failed
         out.append(SentenceCheck(sent, cites, not reasons, "grounded" if not reasons else "rejected", reasons))
     return CheckReport(out)
 

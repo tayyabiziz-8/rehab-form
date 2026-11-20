@@ -1,9 +1,11 @@
 {
   "version": 1,
-  "date": "2026-11-18",
+  "date": "2026-11-20",
   "source": "Keraal 1A + 2A, annotator A error labels vs both-Correct; thresholds fitted on all subjects, evidence from leave-one-subject-out",
   "detectors": {
     "CTK_arms_not_raised": {
+      "usable": true,
+      "usable_reason": "ok",
       "exercise": "CTK",
       "keraal_error": "Error1",
       "meaning": "arms not raised enough",
@@ -27,6 +29,8 @@
       }
     },
     "CTK_error3": {
+      "usable": false,
+      "usable_reason": "only 3 people with this error",
       "exercise": "CTK",
       "keraal_error": "Error3",
       "meaning": "to confirm (both arms; elbow-bend signal)",
@@ -50,6 +54,8 @@
       }
     },
     "ELK_body_not_tilted": {
+      "usable": true,
+      "usable_reason": "ok",
       "exercise": "ELK",
       "keraal_error": "Error2",
       "meaning": "body not tilted",
@@ -73,6 +79,8 @@
       }
     },
     "RTK_arms_not_raised": {
+      "usable": false,
+      "usable_reason": "only 3 people with this error",
       "exercise": "RTK",
       "keraal_error": "Error1",
       "meaning": "arms not raised enough",
@@ -96,6 +104,8 @@
       }
     },
     "RTK_torso_not_rotated": {
+      "usable": false,
+      "usable_reason": "only 2 people with this error",
       "exercise": "RTK",
       "keraal_error": "Error2",
       "meaning": "torso rotation not sufficient (Spine)",

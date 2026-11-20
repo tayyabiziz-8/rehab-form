@@ -43,7 +43,7 @@ FEATURE_INFO = {
 # Plain-language wording per detector (patient-facing). Unknown detectors fall back to 'meaning'.
 DETECTOR_TEXT = {
     "CTK_arms_not_raised": {"error": "raise your arms higher", "ok": "your arms reached a good height"},
-    "CTK_error3": {"error": "keep your arms more open", "ok": "your arm position looked right"},
+    "CTK_error3": {"error": "keep your arms more open", "ok": "your arm position looked good"},
     "ELK_body_not_tilted": {"error": "bend your upper body further to the side",
                             "ok": "your upper body bent well to the side"},
     "RTK_arms_not_raised": {"error": "keep your arms raised", "ok": "your arms stayed at a good height"},
@@ -92,9 +92,10 @@ def _round(x: float, decimals: int) -> float:
 
 
 class FindingsEngine:
-    def __init__(self, thresholds_path: str | Path = DEFAULT_THRESHOLDS, trust: TrustTable | None = None):
+    def __init__(self, thresholds_path: str | Path = DEFAULT_THRESHOLDS, trust: TrustTable | None = None,
+                 include_unvalidated: bool = False):
         cfg = json.loads(Path(thresholds_path).read_text(encoding="utf-8"))
-        self.detectors = cfg["detectors"]
+        self.detectors = {k: v for k, v in cfg["detectors"].items() if include_unvalidated or v.get("usable", True)}
         self.trust = trust or TrustTable.load()
 
     def _quotable(self, det: dict, feature: str, exercise: str, value: float) -> tuple[bool, str | None, str]:
