@@ -124,6 +124,7 @@ def main() -> None:
     det_stats = defaultdict(Counter)
     win_hits, win_iou, sev_pairs, side_pairs = defaultdict(list), defaultdict(list), Counter(), Counter()
     win_chance, implied_fps = defaultdict(list), []
+    win_source, win_anyrep, borderline = defaultdict(Counter), defaultdict(list), defaultdict(Counter)
     t_reasons = Counter()
     fb = Counter()
     reasons = Counter()
@@ -157,6 +158,12 @@ def main() -> None:
         for f in findings:
             err = engine.detectors[f.detector]["keraal_error"]
             flagged = f.status == "error"
+            if f.status == "borderline":
+                label = ("both Correct" if a_correct and b_correct else
+                         "both marked this error" if err in a_types and err in b_types else
+                         "clinicians disagree" if (err in a_types) != (err in b_types) or a_correct != b_correct
+                         else "other")
+                borderline[f.detector][label] += 1
             for who, types, correct in (("A", a_types, a_correct), ("B", b_types, b_correct)):
                 if err in types:
                     det_stats[(f.detector, who)]["tp" if flagged else "fn"] += 1
@@ -170,6 +177,10 @@ def main() -> None:
                     win_hits[f.detector].append(best[0])
                     win_iou[f.detector].append(best[1])
                     win_chance[f.detector].append(chance_overlap(f.end_s - f.start_s, len(bp) / FPS, wins))
+                    win_source[f.detector][f.window_source] += 1
+                    if f.reps:   # upper bound: does ANY repetition we found overlap A's window?
+                        win_anyrep[f.detector].append(any(overlap((r_["start_s"], r_["end_s"]), w)[0]
+                                                          for r_ in f.reps for w in wins))
                 a_err = next(e for e in A["errors"] if e["type"] == err)
                 if f.severity and a_err.get("severity"):
                     sev_pairs[(f.severity, a_err["severity"])] += 1
@@ -247,7 +258,15 @@ def main() -> None:
     for det in sorted(win_hits):
         h, iou = win_hits[det], win_iou[det]
         print(f"  {det:<24} overlap {np.mean(h):.0%} of {len(h)} (a randomly placed window: "
-              f"{np.mean(win_chance[det]):.0%}), median IoU {np.median(iou):.2f}")
+              f"{np.mean(win_chance[det]):.0%}), median IoU {np.median(iou):.2f}; windows from "
+              f"{dict(win_source[det])}")
+        if win_anyrep[det]:
+            print(f"  {'':<24} any detected repetition overlaps A's window: {np.mean(win_anyrep[det]):.0%} "
+                  f"(upper bound if we picked the right repetition)")
+    if borderline:
+        print("\n=== borderline (just past the threshold; clinician view only, not corrected)")
+        for det, c in sorted(borderline.items()):
+            print(f"  {det:<24} {sum(c.values())} recordings: {dict(c.most_common())}")
     if sev_pairs:
         print("\n=== severity: ours vs A")
         for (ours, theirs), n in sorted(sev_pairs.items()):

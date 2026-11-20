@@ -45,6 +45,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # A detector feeds the findings engine only if it held up on people it was not fitted on
 MIN_BALANCED = 0.75   # leave-one-subject-out balanced accuracy
 MIN_PEOPLE = 4        # different people with the error
+MAX_FALSE_ALARM = 0.10   # borderline band: target share of both-Correct recordings still corrected
 
 # Error meanings: Keraal's descriptions, matched to the 18 Nov signal ranking
 # (body part + which feature separates the error). 'reportable' = the feature
@@ -109,6 +110,48 @@ def as_float(v) -> float:
         return float(v)
     except (TypeError, ValueError):
         return float("nan")
+
+
+def borderline_band(rows: list[dict], cfg: dict) -> float:
+    """Choose a 'borderline' margin just past the threshold and print the trade-off.
+
+    Inside the band a recording is not corrected (clinician view only). The margin
+    is the smallest one that brings false alarms on recordings BOTH clinicians
+    called Correct to <= MAX_FALSE_ALARM, capped at half the distance to the
+    severity cut (so 'large' errors are never hidden). In-sample: a strictness
+    setting, not a validated accuracy figure."""
+    ex, feat, d, thr = cfg["exercise"], cfg["feature"], cfg["direction"], cfg["threshold"]
+    rr = [r for r in rows if r["exercise"] == ex]
+    x = np.array([as_float(r[feat]) for r in rr])
+    pos = np.array([r["eval_A"] == "Incorrect" and r["type_A"] == cfg["keraal_error"] for r in rr])
+    both_ok = np.array([r["consensus"] == "Correct" for r in rr])
+    rated = np.array([r["eval_A"] in ("Correct", "Incorrect") and r["eval_B"] in ("Correct", "Incorrect") for r in rr])
+    disagree = np.array([r["eval_A"] != r["eval_B"] for r in rr])
+    sign = -1 if d == "below" else 1
+    cut = cfg.get("severity_cut")
+    typical = cfg.get("typical_correct")
+    ref = cut if cut is not None else typical
+    cap = abs(thr - ref) / 2 if ref is not None else 0.0
+    steps = np.linspace(0, cap, 11) if cap > 0 else np.array([0.0])
+    print(f"  borderline sweep for {cfg['exercise']} {feat} (threshold {thr:g}, flag {d}):")
+    print(f"    {'margin':>7} {'sens vs A':>9} {'false alarms':>12} {'in band':>7} {'clinicians disagree in band':>27}")
+    chosen = None
+    for m in steps:
+        hard = thr + sign * m
+        flagged = flag(x, hard, d)
+        band = flag(x, thr, d) & ~flagged
+        sens = flagged[pos].mean() if pos.any() else float("nan")
+        fa = flagged[both_ok].mean() if both_ok.any() else float("nan")
+        dis = disagree[band & rated].mean() if (band & rated).any() else float("nan")
+        print(f"    {m:7.3f} {sens:9.0%} {fa:12.0%} {band.sum():7d} {dis:27.0%}")
+        if chosen is None and fa <= MAX_FALSE_ALARM:
+            chosen = float(m)
+    if chosen is None:
+        chosen = float(steps[-1])
+    out_band = flag(x, thr + sign * chosen, d) | ~flag(x, thr, d)
+    base = disagree[rated & out_band].mean() if (rated & out_band).any() else float("nan")
+    print(f"    -> margin {chosen:.3f}; clinicians disagree on {base:.0%} of recordings outside the band")
+    return round(chosen, 3)
 
 
 def main() -> None:
@@ -216,6 +259,10 @@ def main() -> None:
                              "kappa_system_B": round(k_sb, 3), "n_error": int(is_pos.sum()),
                              "n_correct": int(is_neg.sum()), "people_error": people_err},
             }
+
+    print("\n=== borderline band (no patient correction just past the threshold)")
+    for det_id, cfg in thresholds.items():
+        cfg["borderline_margin"] = borderline_band(rows, cfg) if cfg["usable"] else 0.0
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     with open(args.out, "w", newline="", encoding="utf-8") as f:

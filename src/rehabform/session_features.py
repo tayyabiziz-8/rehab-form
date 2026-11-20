@@ -42,7 +42,9 @@ def series(bp: np.ndarray, measures: dict | None = None) -> dict[str, np.ndarray
     lo = "r" if hi == "l" else "l"
     T = len(bp)
     lean = m["trunk_lean"]
-    lean0 = np.nanmedian(lean[: max(3, T // 10)])
+    # rest posture = the first second (recordings start before the movement); used for timing only,
+    # the recording feature keeps its own baseline so the fitted thresholds stay valid
+    lean0 = np.nanmedian(lean[: max(3, int(FPS))])
     sh_y = (P[:, L_SH, 1] + P[:, R_SH, 1]) / 2
     arm_mean = np.nanmean(np.stack([m["arm_elevation_l"], m["arm_elevation_r"]]), axis=0)
     elbow_mean = np.nanmean(np.stack([m["elbow_flexion_l"], m["elbow_flexion_r"]]), axis=0)
@@ -120,3 +122,39 @@ def peak_window(x: np.ndarray, top_pct: float = 90, max_gap: int = 3) -> tuple[i
         prev = i
     runs.append((start, prev))
     return max(runs, key=lambda r: (r[1] - r[0], -r[0]))
+
+
+def _smooth(x: np.ndarray, k: int = 5) -> np.ndarray:
+    ok = np.isfinite(x)
+    if ok.sum() < 2:
+        return x
+    xf = np.interp(np.arange(len(x)), np.flatnonzero(ok), x[ok])
+    k = max(1, min(k, len(xf)))
+    return np.convolve(xf, np.ones(k) / k, mode="same")
+
+
+def segment_reps(x: np.ndarray, fps: float = FPS, min_sep_s: float = 1.5,
+                 prom_frac: float = 0.3) -> list[tuple[int, int, int]]:
+    """Repetitions as (start, peak, end) frames, from the peaks of a per-frame series.
+
+    A peak must be the highest point within +/- min_sep_s / 2 and stand out from
+    the lower of its two neighbouring valleys by prom_frac of the series' spread
+    (p95 - p5). Reps are bounded by the valleys between peaks."""
+    s = _smooth(x)
+    if len(s) < 5 or not np.isfinite(s).any():
+        return []
+    spread = np.nanpercentile(s, 95) - np.nanpercentile(s, 5)
+    if spread <= 0:
+        return []
+    half = max(1, int(round(min_sep_s * fps / 2)))
+    cands = [i for i in range(len(s)) if s[i] == s[max(0, i - half): i + half + 1].max()]
+    # keep one index per plateau
+    peaks = [c for j, c in enumerate(cands) if j == 0 or c - cands[j - 1] > 1]
+    reps = []
+    bounds = [0] + [int(a + np.argmin(s[a:b + 1])) for a, b in zip(peaks[:-1], peaks[1:])] + [len(s) - 1]
+    for k, p in enumerate(peaks):
+        a, b = bounds[k], bounds[k + 1]
+        valley = max(s[a:p + 1].min(), s[p:b + 1].min())
+        if s[p] - valley >= prom_frac * spread:
+            reps.append((a, p, b))
+    return reps

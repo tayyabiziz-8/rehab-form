@@ -13,14 +13,16 @@ scripts/pillar2_detectors.py (fitted on Keraal 1A + 2A clinician labels).
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import numpy as np
 
 from .angles import TrustTable, compute_all
-from .session_features import FPS, features, peak_window, series
+from .session_features import FPS, features, peak_window, segment_reps, series
 
+MIN_VALID_FRACTION = 0.5   # a check needs its measure in at least half of the frames
 DEFAULT_THRESHOLDS = Path(__file__).resolve().parents[2] / "config" / "findings_thresholds.json"
 
 # feature -> (trust-table measure or None, plain label, unit, decimals, is a change/range measure)
@@ -58,7 +60,7 @@ class Finding:
     id: str                     # F1, F2, ... (feedback sentences cite these)
     detector: str
     exercise: str
-    status: str                 # "error" | "ok"
+    status: str                 # "error" | "borderline" | "ok"  (borderline: shown to the clinician only)
     issue: str                  # what was checked (Keraal error meaning)
     advice: str                 # plain-language action (error) or praise (ok)
     body_part: str              # Spine | BothArms | LeftArm | RightArm
@@ -76,6 +78,8 @@ class Finding:
     trust_mode: str | None
     trust_note: str = ""
     evidence: dict = field(default_factory=dict)
+    window_source: str = ""     # "worst_rep" | "peak" : how start_s / end_s were chosen
+    reps: list = field(default_factory=list)   # [{"start_s", "end_s", "peak"}] for the clinician replay
 
     def allowed_numbers(self) -> list[float]:
         nums = [x for x in (self.start_s, self.end_s) if x is not None]
@@ -85,6 +89,11 @@ class Finding:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def _nanmax(x: np.ndarray) -> float:
+    x = x[np.isfinite(x)]
+    return float(x.max()) if x.size else float("nan")
 
 
 def _round(x: float, decimals: int) -> float:
@@ -97,6 +106,7 @@ class FindingsEngine:
         cfg = json.loads(Path(thresholds_path).read_text(encoding="utf-8"))
         self.detectors = {k: v for k, v in cfg["detectors"].items() if include_unvalidated or v.get("usable", True)}
         self.trust = trust or TrustTable.load()
+        self.skipped: list[str] = []
 
     def _quotable(self, det: dict, feature: str, exercise: str, value: float) -> tuple[bool, str | None, str]:
         measure, _label, _unit, _dec, is_change = FEATURE_INFO.get(feature, (None, feature, "", 1, False))
@@ -110,27 +120,52 @@ class FindingsEngine:
         return False, d.mode, d.note
 
     def run(self, bp: np.ndarray, exercise: str) -> list[Finding]:
-        """Findings for one recording / session. ``bp``: (T, 33, 3) pixel units, un-mirrored, sides fixed."""
+        """Findings for one recording / session. ``bp``: (T, 33, 3) pixel units, un-mirrored, sides fixed.
+        A check is skipped when its measure is missing in more than half of the frames."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)       # empty slices when the person is lost
+            return self._run(bp, exercise)
+
+    def _run(self, bp: np.ndarray, exercise: str) -> list[Finding]:
         m = {k: v for k, (v, _ok) in compute_all(bp).items()}
         feats = features(bp)
         ser = series(bp, m)
         out: list[Finding] = []
+        self.skipped = []                    # checks for this exercise that could not be judged (too little data)
         for det_id, det in self.detectors.items():
             if det["exercise"] != exercise:
                 continue
             feat = det["feature"]
             value = feats.get(feat, float("nan"))
             if not np.isfinite(value):
+                self.skipped.append(det_id)
                 continue
             below = det["direction"] == "below"
             is_error = value < det["threshold"] if below else value > det["threshold"]
+            # borderline: just past the threshold, where clinicians themselves disagree -> clinician view only
+            margin = det.get("borderline_margin") or 0.0
+            hard = det["threshold"] - margin if below else det["threshold"] + margin
+            borderline = is_error and not (value < hard if below else value > hard)
             _measure, label, unit, dec, _chg = FEATURE_INFO.get(feat, (None, feat, "", 1, False))
             quotable, mode, note = self._quotable(det, feat, exercise, value)
             severity = None
-            if is_error and det.get("severity_cut") is not None:
+            if is_error and not borderline and det.get("severity_cut") is not None:
                 beyond = value < det["severity_cut"] if below else value > det["severity_cut"]
                 severity = "large" if beyond else "small"
-            win = peak_window(ser.get(feat, np.full(len(bp), np.nan)))
+            x = ser.get(feat, np.full(len(bp), np.nan))
+            if np.isfinite(x).mean() < MIN_VALID_FRACTION:
+                self.skipped.append(det_id)  # person not seen well enough to judge this check
+                continue
+            reps = segment_reps(x)
+            win, win_src = None, "peak"
+            # each repetition's top value, from the raw measure (frames where the person was lost are NaN)
+            rep_top = [_nanmax(x[a:b + 1]) for a, _p, b in reps]
+            if sum(np.isfinite(v) for v in rep_top) >= 2:
+                # the repetition that went worst: lowest top for "not enough", highest for "too much"
+                k = int(np.nanargmin(rep_top) if below else np.nanargmax(rep_top))
+                win, win_src = (reps[k][0], reps[k][2]), "worst_rep"
+            if win is None:
+                win = peak_window(x)
             side = None
             if feat in ("arm_peak_high", "elbow_reach_p50", "elbow_reach_p95"):
                 side = {"l": "left", "r": "right"}[ser["_reaching_side"]]
@@ -138,7 +173,7 @@ class FindingsEngine:
             typical = det.get("typical_correct")
             out.append(Finding(
                 id=f"F{len(out) + 1}", detector=det_id, exercise=exercise,
-                status="error" if is_error else "ok", issue=det["meaning"],
+                status="borderline" if borderline else ("error" if is_error else "ok"), issue=det["meaning"],
                 advice=text["error" if is_error else "ok"], body_part=det["body_part"], side=side,
                 feature=feat, measure_label=label, unit=unit, quotable=quotable,
                 value=_round(value, dec) if quotable else None,
@@ -148,9 +183,13 @@ class FindingsEngine:
                 start_s=round(win[0] / FPS, 1) if win else None,
                 end_s=round(win[1] / FPS, 1) if win else None,
                 trust_mode=mode, trust_note=note, evidence=det.get("evidence", {}),
+                window_source=win_src,
+                reps=[{"start_s": round(a / FPS, 1), "end_s": round(b / FPS, 1),
+                       "peak": round(float(v), 3) if np.isfinite(v) else None}
+                      for (a, _pk, b), v in zip(reps, rep_top)],
             ))
         # errors first (largest first), then the checks that passed
-        out.sort(key=lambda f: (f.status != "error", f.severity != "large"))
+        out.sort(key=lambda f: ({"error": 0, "borderline": 1, "ok": 2}[f.status], f.severity != "large"))
         for i, f in enumerate(out, 1):
             f.id = f"F{i}"
         return out

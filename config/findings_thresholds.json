@@ -26,7 +26,8 @@
         "n_error": 26,
         "n_correct": 55,
         "people_error": 8
-      }
+      },
+      "borderline_margin": 0.181
     },
     "CTK_error3": {
       "usable": false,
@@ -51,7 +52,8 @@
         "n_error": 17,
         "n_correct": 55,
         "people_error": 3
-      }
+      },
+      "borderline_margin": 0.0
     },
     "ELK_body_not_tilted": {
       "usable": true,
@@ -76,7 +78,8 @@
         "n_error": 43,
         "n_correct": 15,
         "people_error": 5
-      }
+      },
+      "borderline_margin": 0.0
     },
     "RTK_arms_not_raised": {
       "usable": false,
@@ -101,7 +104,8 @@
         "n_error": 4,
         "n_correct": 51,
         "people_error": 3
-      }
+      },
+      "borderline_margin": 0.0
     },
     "RTK_torso_not_rotated": {
       "usable": false,
@@ -126,7 +130,8 @@
         "n_error": 6,
         "n_correct": 51,
         "people_error": 2
-      }
+      },
+      "borderline_margin": 0.0
     }
   }
 }

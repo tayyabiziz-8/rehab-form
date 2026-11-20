@@ -21,10 +21,17 @@ from rehabform.findings import Finding, FindingsEngine  # noqa: E402
 W, H = 480, 360
 
 
-def elk_sequence(lean_deg: float, T: int = 100) -> np.ndarray:
-    """Person facing the camera, left arm goes overhead while the trunk leans by lean_deg."""
+def elk_sequence(lean_deg: float, T: int = 100, reps: list[float] | None = None) -> np.ndarray:
+    """Person facing the camera, left arm goes overhead while the trunk leans by lean_deg.
+    With ``reps`` (one scale per repetition) the bend is repeated, each rep scaled."""
     bp = np.full((T, 33, 3), np.nan, np.float32)
-    s = np.sin(np.linspace(0, np.pi, T))
+    if reps:
+        rest = 10                                              # 1 s still at the start
+        per = (T - rest) // len(reps)
+        s = np.concatenate([np.zeros(rest)] + [sc * np.sin(np.linspace(0, np.pi, per)) for sc in reps])
+        s = np.concatenate([s, np.zeros(T - len(s))])
+    else:
+        s = np.sin(np.linspace(0, np.pi, T))
     for t in range(T):
         lean = np.radians(lean_deg * s[t])
         hip = np.array([240.0, 280.0])
@@ -42,8 +49,8 @@ def elk_sequence(lean_deg: float, T: int = 100) -> np.ndarray:
     return bp
 
 
-def engine(tmp: Path) -> FindingsEngine:
-    cfg = {"detectors": {"ELK_body_not_tilted": {
+def engine(tmp: Path, margin: float = 0.0) -> FindingsEngine:
+    cfg = {"detectors": {"ELK_body_not_tilted": {"borderline_margin": margin,
         "exercise": "ELK", "keraal_error": "Error2", "meaning": "body not tilted", "body_part": "Spine",
         "feature": "lean_range", "direction": "below", "threshold": 15.0, "unit": "deg trunk lean range",
         "reportable": True, "typical_correct": 25.0, "severity_cut": 8.0, "evidence": {}}}}
@@ -61,6 +68,19 @@ def test_engine_flags_small_lean_and_passes_large_lean():
     assert bad[0].severity == "large"                       # 5 deg is beyond the severity cut (8)
     assert bad[0].start_s is not None and 2 < bad[0].start_s < 8   # window around the peak (middle of 10 s)
     assert good[0].status == "ok"
+
+
+def test_window_is_the_worst_repetition_and_borderline_is_not_corrected():
+    with tempfile.TemporaryDirectory() as d:
+        eng = engine(Path(d))
+        f = eng.run(elk_sequence(12, T=300, reps=[1.0, 1.0, 0.4, 1.0, 1.0]), "ELK")[0]
+        assert f.status == "error" and f.window_source == "worst_rep" and len(f.reps) == 5
+        assert 12 <= f.start_s and f.end_s <= 19.5                 # the third repetition (~12.6-18.4 s)
+        eng2 = engine(Path(d), margin=5.0)                          # 12 deg is within 5 of the 15 threshold
+        b = eng2.run(elk_sequence(12, T=300, reps=[1.0, 1.0, 0.4, 1.0, 1.0]), "ELK")
+    assert b[0].status == "borderline"
+    text = template_feedback(b)
+    assert "[F" not in text and "bend" not in text.lower()          # nothing corrective for the patient
 
 
 def test_template_feedback_always_passes_the_checker():

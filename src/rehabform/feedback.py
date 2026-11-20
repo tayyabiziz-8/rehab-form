@@ -50,6 +50,8 @@ def _fmt(x: float | None, unit: str) -> str:
 def _when(f: Finding) -> str:
     if f.start_s is None:
         return ""
+    if f.window_source == "worst_rep" and f.status == "error" and f.end_s is not None:
+        return f" (most clearly in the repetition around {f.start_s:g}–{f.end_s:g} s)"
     if f.end_s is None or f.end_s == f.start_s:
         return f" (around {f.start_s:g} s)"
     return f" (around {f.start_s:g}–{f.end_s:g} s)"
@@ -57,6 +59,8 @@ def _when(f: Finding) -> str:
 
 def template_feedback(findings: list[Finding], max_errors: int = 3) -> str:
     """Deterministic, always passes the claim checker."""
+    all_findings = findings
+    findings = patient_findings(findings)
     errors = [f for f in findings if f.status == "error"][:max_errors]
     oks = [f for f in findings if f.status == "ok"]
     sents = []
@@ -76,7 +80,8 @@ def template_feedback(findings: list[Finding], max_errors: int = 3) -> str:
         f = oks[0]
         sents.append(f"Good: {f.advice}. [{f.id}]")
     if not findings:
-        return "No automatic form checks are validated for this exercise yet."
+        return "No automatic form checks are validated for this exercise yet." if not all_findings \
+            else "Keep it up!"
     if not errors:
         sents.append("Keep it up!")
     return " ".join(sents)
@@ -290,8 +295,18 @@ class Feedback:
     report: CheckReport
 
 
+NOT_SEEN_TEXT = ("We could not see you clearly enough to check this exercise. Please record again with your "
+                 "whole upper body and hips in view, facing the camera.")
+
+
+def patient_findings(findings: list[Finding]) -> list[Finding]:
+    """Borderline findings go to the clinician view only; the patient hears about clear errors and passes."""
+    return [f for f in findings if f.status != "borderline"]
+
+
 def write_feedback(findings: list[Finding], exercise: str, llm: LLMClient | None = None) -> Feedback:
     """LLM draft -> claim check -> template if the draft fails (or no LLM)."""
+    findings = patient_findings(findings)
     if llm is None or not findings:
         text = template_feedback(findings)
         return Feedback(text, "template_only", None, None, check(text, findings))
