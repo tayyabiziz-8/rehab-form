@@ -22,6 +22,7 @@ import numpy as np
 from .angles import TrustTable, compute_all
 from .session_features import FPS, features, peak_window, segment_reps, series
 
+STRICTNESS = {"strict": 0.0, "standard": 1.0, "lenient": 2.0}   # x the fitted borderline band
 MIN_VALID_FRACTION = 0.5   # a check needs its measure in at least half of the frames
 DEFAULT_THRESHOLDS = Path(__file__).resolve().parents[2] / "config" / "findings_thresholds.json"
 
@@ -119,14 +120,20 @@ class FindingsEngine:
             return True, d.mode, d.note
         return False, d.mode, d.note
 
-    def run(self, bp: np.ndarray, exercise: str) -> list[Finding]:
+    def run(self, bp: np.ndarray, exercise: str, strictness: str = "standard") -> list[Finding]:
         """Findings for one recording / session. ``bp``: (T, 33, 3) pixel units, un-mirrored, sides fixed.
-        A check is skipped when its measure is missing in more than half of the frames."""
+        A check is skipped when its measure is missing in more than half of the frames.
+
+        ``strictness`` (the clinician's setting) scales the borderline band just past each threshold:
+        strict = no band (correct everything past the threshold), standard = the fitted band,
+        lenient = twice the band. Thresholds themselves never move."""
+        if strictness not in STRICTNESS:
+            raise ValueError(f"strictness must be one of {sorted(STRICTNESS)}")
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)       # empty slices when the person is lost
-            return self._run(bp, exercise)
+            return self._run(bp, exercise, STRICTNESS[strictness])
 
-    def _run(self, bp: np.ndarray, exercise: str) -> list[Finding]:
+    def _run(self, bp: np.ndarray, exercise: str, band_scale: float = 1.0) -> list[Finding]:
         m = {k: v for k, (v, _ok) in compute_all(bp).items()}
         feats = features(bp)
         ser = series(bp, m)
@@ -143,7 +150,7 @@ class FindingsEngine:
             below = det["direction"] == "below"
             is_error = value < det["threshold"] if below else value > det["threshold"]
             # borderline: just past the threshold, where clinicians themselves disagree -> clinician view only
-            margin = det.get("borderline_margin") or 0.0
+            margin = (det.get("borderline_margin") or 0.0) * band_scale
             hard = det["threshold"] - margin if below else det["threshold"] + margin
             borderline = is_error and not (value < hard if below else value > hard)
             _measure, label, unit, dec, _chg = FEATURE_INFO.get(feat, (None, feat, "", 1, False))

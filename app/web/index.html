@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Physio Coach (reference app)</title>
+<style>
+:root{--bg:#f7f7f8;--panel:#fff;--fg:#1d1d1f;--muted:#6b6b72;--line:#e3e3e8;--accent:#2563eb;--accent-soft:#2563eb14;
+  --bad:#dc2626;--good:#16a34a;--warn:#d97706;--left:#f08c00;--right:#1c7ed6;--code:#f1f1f4}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121214;--panel:#1b1b1f;--fg:#ececf0;--muted:#a1a1aa;
+  --line:#2c2c33;--accent:#60a5fa;--accent-soft:#60a5fa1f;--bad:#f87171;--good:#4ade80;--warn:#fbbf24;--code:#232329}}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+header{padding:14px 16px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+header h1{font-size:18px;margin:0} header .muted{font-size:13px}
+main{max-width:1100px;margin:0 auto;padding:16px;display:grid;gap:16px;grid-template-columns:minmax(0,3fr) minmax(0,2fr)}
+@media (max-width:860px){main{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0}
+.muted{color:var(--muted)} h2{font-size:15px;margin:0 0 10px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+select,button,input[type=file]{font:inherit;color:inherit}
+select,button{padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff} button:disabled{opacity:.5}
+button.rec{background:var(--bad);border-color:var(--bad);color:#fff}
+.stage{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:16/9}
+.stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.stage.mirror video,.stage.mirror canvas{transform:scaleX(-1)}
+.badge{position:absolute;top:8px;left:8px;padding:2px 8px;border-radius:999px;font-size:12px;background:#000a;color:#fff}
+.live{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:10px}
+.metric{background:var(--code);border-radius:8px;padding:8px 10px} .metric b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+.metric span{font-size:12px;color:var(--muted)}
+#msg{min-height:22px;font-size:13px;margin-top:8px} #msg.err{color:var(--bad)}
+.patient{font-size:17px;line-height:1.55} .sent{cursor:pointer;border-radius:4px;padding:0 2px}
+.sent:hover,.sent.on{background:var(--accent-soft)}
+.finding{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:10px 0} .finding.on{border-color:var(--accent)}
+.st{font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em} .st.error{color:var(--bad)} .st.ok{color:var(--good)} .st.borderline{color:var(--warn)}
+svg .line{fill:none;stroke:var(--accent);stroke-width:1.6} svg .rep{fill:var(--accent-soft)} svg .win{fill:none;stroke:var(--bad);stroke-width:1.5;stroke-dasharray:4 3}
+svg text{fill:var(--muted);font-size:10px}
+.replay{width:100%;aspect-ratio:4/3;background:var(--code);border-radius:8px;margin-top:8px}
+details summary{cursor:pointer;color:var(--muted);font-size:13px} pre{background:var(--code);padding:8px;border-radius:8px;overflow:auto;font-size:12px;max-height:260px}
+.legend{font-size:12px} .legend i{display:inline-block;width:10px;height:3px;vertical-align:middle;margin:0 4px 0 10px}
+</style>
+</head>
+<body>
+<header><h1>Physio Coach</h1><span class="muted">reference app · landmarks only leave this device, never video</span></header>
+<main>
+  <section class="panel">
+    <div class="controls">
+      <select id="exercise" aria-label="Exercise"></select>
+      <button id="btnCam" class="primary">Start camera</button>
+      <label class="muted" style="font-size:13px">or video file <input id="file" type="file" accept="video/*"></label>
+    </div>
+    <div class="stage" id="stage"><video id="video" playsinline muted></video><canvas id="overlay"></canvas><span class="badge" id="badge">camera off</span></div>
+    <div class="controls" style="margin-top:10px">
+      <button id="btnRec" disabled>Record set</button>
+      <select id="strictness" aria-label="Strictness" title="Clinician strictness: how far past a threshold before the patient is corrected"></select>
+      <label class="muted" style="font-size:13px"><input type="checkbox" id="useLlm" disabled> language-model wording</label>
+      <span class="legend muted"><i style="background:var(--left)"></i>left<i style="background:var(--right)"></i>right</span>
+    </div>
+    <div class="live" id="live"></div>
+    <div id="msg" class="muted">Loading…</div>
+  </section>
+  <section class="panel" id="results">
+    <h2>Feedback</h2>
+    <p class="muted">Record a set of 3–5 repetitions facing the camera, upper body and hips in view.</p>
+  </section>
+</main>
+<script type="module">
+// ---------------------------------------------------------------- config
+const MP_VERSION = "0.10.14";                                    // pinned; see README before changing
+const MP_BASE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`;
+const MODEL_LOCAL = "/models/pose_landmarker_full.task";        // served by app/server.py from models/
+const MODEL_REMOTE = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task";
+const L = {sh: 11, el: 13, wr: 15, hip: 23}, R = {sh: 12, el: 14, wr: 16, hip: 24};
+const EDGES = [[11,13],[13,15],[12,14],[14,16],[11,12],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
+const LEFT_IDS = new Set([11,13,15,23,25,27]);
+const SWAP = (() => { const s = [...Array(33).keys()]; [[1,4],[2,5],[3,6],[7,8],[9,10],[11,12],[13,14],[15,16],[17,18],[19,20],[21,22],[23,24],[25,26],[27,28],[29,30],[31,32]].forEach(([a,b]) => { s[a]=b; s[b]=a; }); return s; })();
+
+const $ = id => document.getElementById(id);
+const video = $("video"), canvas = $("overlay"), ctx = canvas.getContext("2d");
+const state = {landmarker: null, source: null, running: false, recording: false, frames: [], lastTs: -1,
+  armMax: {l: 0, r: 0}, rep: null, mirrorView: false, health: null, result: null};
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const msg = (t, err = false) => { $("msg").textContent = t; $("msg").className = err ? "err" : "muted"; };
+
+// ---------------------------------------------------------------- geometry (port of src/rehabform/angles.py, one frame)
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], dot = (a, b) => a[0] * b[0] + a[1] * b[1], norm = a => Math.hypot(a[0], a[1]);
+const deg = r => r * 180 / Math.PI;
+function toPixels(lm, w, h) { return lm.map(p => [p.x * w, p.y * h, p.z * w]); }
+function fixSides(P) {               // person faces the camera: their left shoulder+hip must be on the image right
+  const d = (P[11][0] - P[12][0]) + (P[23][0] - P[24][0]);
+  return d < 0 ? SWAP.map(i => P[i]) : P;
+}
+function armElevation(P, s, o) {     // 0 = down, 90 = out/forward, 180 = overhead; vs the shoulder-line perpendicular
+  const arm = sub(P[s.el], P[s.sh]), line = sub(P[s.sh], P[o.sh]);
+  const midSh = [(P[11][0] + P[12][0]) / 2, (P[11][1] + P[12][1]) / 2], midHip = [(P[23][0] + P[24][0]) / 2, (P[23][1] + P[24][1]) / 2];
+  let perp = [-line[1], line[0]]; if (dot(perp, sub(midHip, midSh)) < 0) perp = [-perp[0], -perp[1]];
+  const d = [perp[0] / norm(perp), perp[1] / norm(perp)], u = [line[0] / norm(line), line[1] / norm(line)];
+  return {deg: deg(Math.atan2(dot(arm, u), dot(arm, d))), len: norm(arm)};
+}
+function elbowFlexion(P, s) { const a = sub(P[s.el], P[s.sh]), b = sub(P[s.wr], P[s.el]);
+  return deg(Math.acos(Math.max(-1, Math.min(1, dot(a, b) / (norm(a) * norm(b) + 1e-9))))); }
+function trunkLean(P) {              // + = towards the person's left (image right)
+  const t = [(P[11][0] + P[12][0]) / 2 - (P[23][0] + P[24][0]) / 2, (P[11][1] + P[12][1]) / 2 - (P[23][1] + P[24][1]) / 2];
+  return deg(Math.atan2(t[0], -t[1]));
+}
+function measures(P) {
+  const al = armElevation(P, L, R), ar = armElevation(P, R, L);
+  state.armMax.l = Math.max(state.armMax.l, al.len); state.armMax.r = Math.max(state.armMax.r, ar.len);
+  const sw = norm(sub(P[11], P[12])), shY = (P[11][1] + P[12][1]) / 2;
+  return {
+    armL: al.len >= 0.5 * state.armMax.l ? al.deg : NaN, armR: ar.len >= 0.5 * state.armMax.r ? ar.deg : NaN,
+    elbowL: elbowFlexion(P, L), elbowR: elbowFlexion(P, R), lean: trunkLean(P),
+    wristHeight: (shY - Math.min(P[15][1], P[16][1])) / sw,           // shoulder widths above the shoulders
+  };
+}
+
+// ---------------------------------------------------------------- live repetition counter (display only; the server segments for real)
+const REP_SIGNAL = {CTK: m => m.wristHeight, ELK: m => Math.abs(m.lean - (state.rep?.lean0 ?? m.lean)), RTK: m => (m.armL + m.armR) / 2};
+const REP_MIN_AMP = {CTK: 0.5, ELK: 8, RTK: 30};
+function repUpdate(m) {
+  const ex = $("exercise").value, r = state.rep; if (!r) return;
+  if (r.lean0 === undefined) { r.leans.push(m.lean); if (r.leans.length >= 10) r.lean0 = r.leans.slice().sort((a, b) => a - b)[5]; return; }
+  const v = REP_SIGNAL[ex](m); if (!Number.isFinite(v)) return;
+  r.lo = Math.min(r.lo, v); r.hi = Math.max(r.hi, v);
+  const amp = r.hi - r.lo; if (amp < REP_MIN_AMP[ex]) return;
+  if (!r.up && v > r.lo + 0.6 * amp) r.up = true;
+  else if (r.up && v < r.lo + 0.3 * amp) { r.up = false; r.count++; }
+}
+
+// ---------------------------------------------------------------- drawing
+function drawSkeleton(c, P, w, h) {
+  const g = c.getContext("2d"); g.lineWidth = Math.max(2, w / 250); g.lineCap = "round";
+  for (const [a, b] of EDGES) {
+    if (!P[a] || !P[b] || !Number.isFinite(P[a][0]) || !Number.isFinite(P[b][0])) continue;
+    const l = LEFT_IDS.has(a) + LEFT_IDS.has(b);               // 2 = left limb, 0 = right limb, 1 = across the body
+    g.strokeStyle = l === 2 ? css("--left") : l === 0 ? css("--right") : "#bbb";
+    g.beginPath(); g.moveTo(P[a][0], P[a][1]); g.lineTo(P[b][0], P[b][1]); g.stroke();
+  }
+}
+function showLive(m) {
+  const f = v => Number.isFinite(v) ? Math.round(v) : "–";
+  const cells = [["Left arm", `${f(m?.armL)}°`], ["Right arm", `${f(m?.armR)}°`], ["Left elbow bend", `${f(m?.elbowL)}°`],
+    ["Right elbow bend", `${f(m?.elbowR)}°`], ["Side bend", `${f(m?.lean)}°`], ["Reps (live)", state.rep ? state.rep.count : "–"]];
+  $("live").innerHTML = cells.map(([k, v]) => `<div class="metric"><b>${v}</b><span>${k}</span></div>`).join("");
+}
+
+// ---------------------------------------------------------------- MediaPipe
+async function loadLandmarker() {
+  const {FilesetResolver, PoseLandmarker} = await import(`${MP_BASE}/vision_bundle.mjs`);
+  const fileset = await FilesetResolver.forVisionTasks(`${MP_BASE}/wasm`);
+  const local = await fetch(MODEL_LOCAL, {method: "HEAD"}).then(r => r.ok).catch(() => false);
+  const opts = d => ({baseOptions: {modelAssetPath: local ? MODEL_LOCAL : MODEL_REMOTE, delegate: d}, runningMode: "VIDEO", numPoses: 1,
+    minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5});
+  try { return await PoseLandmarker.createFromOptions(fileset, opts("GPU")); }
+  catch { return await PoseLandmarker.createFromOptions(fileset, opts("CPU")); }
+}
+function loop() {
+  if (!state.running) return;
+  if (video.readyState >= 2 && state.landmarker) {
+    const w = video.videoWidth, h = video.videoHeight;
+    if (canvas.width !== w) { canvas.width = w; canvas.height = h; }
+    const mediaMs = state.source === "file" ? video.currentTime * 1000 : performance.now();
+    const ts = Math.max(state.lastTs + 1, Math.round(performance.now())); state.lastTs = ts;  // detector needs increasing time
+    const res = state.landmarker.detectForVideo(video, ts);
+    ctx.clearRect(0, 0, w, h);
+    const lm = res.landmarks && res.landmarks[0];
+    let m = null;
+    if (lm) { const P = fixSides(toPixels(lm, w, h)); drawSkeleton(canvas, P, w, h); m = measures(P); repUpdate(m); }
+    $("badge").textContent = lm ? (state.recording ? "● recording" : "person found") : "no person";
+    showLive(m);
+    if (state.recording) state.frames.push({t_ms: +mediaMs.toFixed(1), landmarks: lm ? lm.map(p => [+p.x.toFixed(5), +p.y.toFixed(5), +p.z.toFixed(5)]) : null});
+    if (state.source === "file" && video.ended && state.recording) stopRecording();
+  }
+  requestAnimationFrame(loop);
+}
+
+// ---------------------------------------------------------------- sources
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: "user", width: {ideal: 1280}, height: {ideal: 720}}, audio: false});
+    video.srcObject = stream; video.src = ""; await video.play();
+    state.source = "camera"; $("stage").classList.add("mirror");   // mirror the VIEW only; landmarks stay in camera coordinates
+    begin("Camera on. Press Record set, do 3–5 repetitions, then Stop.");
+  } catch (e) { msg(`Camera not available: ${e.message}. Use a video file, or open this page via localhost / HTTPS.`, true); }
+}
+function loadFile(file) {
+  if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
+  video.src = URL.createObjectURL(file); video.loop = false; state.source = "file"; $("stage").classList.remove("mirror");
+  video.onloadeddata = () => { video.currentTime = 0; begin("Video loaded. Press Record set: it plays the video and analyses it to the end."); };
+}
+function begin(text) { state.running = true; $("btnRec").disabled = !state.landmarker; msg(text); requestAnimationFrame(loop); }
+
+// ---------------------------------------------------------------- recording and analysis
+function startRecording() {
+  state.frames = []; state.recording = true; state.armMax = {l: 0, r: 0}; state.rep = {count: 0, lo: Infinity, hi: -Infinity, up: false, leans: []};
+  $("btnRec").textContent = "Stop and analyse"; $("btnRec").classList.add("rec");
+  if (state.source === "file") { video.currentTime = 0; video.play(); }
+}
+async function stopRecording() {
+  state.recording = false; $("btnRec").textContent = "Record set"; $("btnRec").classList.remove("rec");
+  if (state.source === "file") video.pause();
+  await submit(state.frames, {width: video.videoWidth, height: video.videoHeight});
+}
+async function submit(frames, {width, height}) {
+  const found = frames.filter(f => f.landmarks).length;
+  msg(`Analysing ${frames.length} frames (person in ${Math.round(100 * found / Math.max(frames.length, 1))}%)…`);
+  const body = {exercise: $("exercise").value, strictness: $("strictness").value, use_llm: $("useLlm").checked,
+    width, height, mirrored: false, frames};
+  try {
+    const r = await fetch("/api/session", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || r.statusText);
+    state.result = {...j, frames, width, height}; render(state.result); msg("Done.");
+  } catch (e) { msg(`Analysis failed: ${e.message}`, true); }
+}
+
+// ---------------------------------------------------------------- results
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+function timeline(values, reps, win) {
+  const W = 420, H = 110, pl = 34, pr = 8, pt = 8, pb = 18, n = values.length, fin = values.filter(v => v !== null);
+  if (fin.length < 2) return "";
+  let lo = Math.min(...fin), hi = Math.max(...fin); if (hi === lo) hi = lo + 1;
+  const dur = (n - 1) / 10, X = t => pl + (W - pl - pr) * t / Math.max(dur, 1e-6), Y = v => pt + (H - pt - pb) * (1 - (v - lo) / (hi - lo));
+  let pts = "", parts = [];
+  values.forEach((v, i) => { if (v !== null) pts += `${X(i / 10).toFixed(1)},${Y(v).toFixed(1)} `; });
+  reps.forEach((r, i) => parts.push(`<rect class="rep" x="${X(r.start_s)}" y="${pt}" width="${Math.max(X(r.end_s) - X(r.start_s), 1)}" height="${H - pt - pb}" opacity="${i % 2 ? .6 : 1}"/>`));
+  if (win) parts.push(`<rect class="win" x="${X(win[0])}" y="${pt}" width="${Math.max(X(win[1]) - X(win[0]), 2)}" height="${H - pt - pb}"/>`);
+  parts.push(`<polyline class="line" points="${pts}"/>`, `<text x="${pl - 4}" y="${Y(hi) + 4}" text-anchor="end">${+hi.toPrecision(3)}</text>`,
+    `<text x="${pl - 4}" y="${Y(lo) + 4}" text-anchor="end">${+lo.toPrecision(3)}</text>`, `<text x="${pl}" y="${H - 4}">0 s</text>`,
+    `<text x="${W - pr}" y="${H - 4}" text-anchor="end">${dur.toFixed(0)} s</text>`);
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="measure over time">${parts.join("")}</svg>`;
+}
+function render(j) {
+  const fb = j.feedback, fx = j.findings;
+  const unit = f => f.unit === "°" ? "°" : ` ${f.unit}`;
+  const sentences = fb.sentences.map((s, i) => `<span class="sent" data-cites="${s.cites.join(",")}" data-i="${i}">${esc(s.text)}</span>`).join(" ");
+  const cards = fx.map(f => {
+    const ev = f.evidence || {};
+    const val = f.quotable && f.value !== null ? `${f.value}${unit(f)} (correct repetitions typically ~${f.typical}${unit(f)})` : "measured; not quoted";
+    return `<div class="finding" id="card-${f.id}"><div><b>${f.id} · ${esc(f.issue)}</b> <span class="st ${f.status}">${f.status}${f.severity ? " · " + f.severity : ""}</span></div>
+      <div class="muted" style="font-size:13px">${esc(f.measure_label)}: ${esc(val)} · ${f.reps.length} repetitions · window ${f.start_s ?? "–"}–${f.end_s ?? "–"} s
+      ${ev.loso_sensitivity !== undefined ? `<br>On people it was not tuned on: catches ${Math.round(100 * ev.loso_sensitivity)}% of clinician-marked errors, leaves ${Math.round(100 * ev.loso_specificity)}% of correct sets alone.` : ""}
+      ${f.status === "borderline" ? "<br>Just past the threshold: shown here, not to the patient." : ""}</div>
+      ${timeline(j.timelines[f.id] || [], f.reps, f.start_s !== null ? [f.start_s, f.end_s] : null)}
+      ${f.start_s !== null ? `<button data-replay="${f.id}">Replay this repetition</button>` : ""}</div>`;
+  }).join("");
+  $("results").innerHTML = `<h2>What the patient sees</h2><div class="patient">${sentences}</div>
+    <p class="muted" style="font-size:13px">${esc(j.exercise)} · ${j.duration_s} s · person found ${Math.round(100 * j.person_found)}% · strictness ${esc(j.strictness)} · wording: ${esc(fb.source)}${fb.llm_rejected_reasons.length ? ` (LLM draft rejected: ${esc(fb.llm_rejected_reasons.join(", "))})` : ""}</p>
+    <h2 style="margin-top:18px">Clinician view</h2>${cards || `<p class="muted">${j.status === "no_checks" ? "No validated checks for this exercise yet." : "No checks could be run."}</p>`}
+    ${j.skipped_checks.length ? `<p class="muted">Skipped (person not seen well enough): ${esc(j.skipped_checks.join(", "))}</p>` : ""}
+    <canvas class="replay" id="replay" width="640" height="480"></canvas>
+    <details><summary>Raw response</summary><pre>${esc(JSON.stringify({...j, frames: undefined, timelines: "(omitted)"}, null, 1))}</pre></details>`;
+  document.querySelectorAll(".sent").forEach(el => el.onclick = () => {
+    document.querySelectorAll(".sent,.finding").forEach(x => x.classList.remove("on")); el.classList.add("on");
+    el.dataset.cites.split(",").filter(Boolean).forEach(id => { const c = $(`card-${id}`); if (c) { c.classList.add("on"); c.scrollIntoView({block: "nearest", behavior: "smooth"}); } });
+  });
+  document.querySelectorAll("[data-replay]").forEach(b => b.onclick = () => replay(fx.find(f => f.id === b.dataset.replay)));
+}
+function replay(f) {                     // skeleton-only replay of the referred repetition, from the recorded landmarks
+  const c = $("replay"), g = c.getContext("2d"), fr = state.result.frames, t0 = fr[0].t_ms;
+  const sel = fr.filter(x => x.landmarks && (x.t_ms - t0) / 1000 >= f.start_s && (x.t_ms - t0) / 1000 <= f.end_s);
+  if (!sel.length) return;
+  let i = 0; const start = performance.now(), span = sel.at(-1).t_ms - sel[0].t_ms;
+  c.height = Math.round(c.width * (state.result.height || 480) / (state.result.width || 640));   // keep the video's shape
+  const step = () => {
+    const now = (performance.now() - start) % (span + 600);
+    while (i < sel.length - 1 && sel[i + 1].t_ms - sel[0].t_ms <= now) i++;
+    if (now < (sel[i]?.t_ms ?? 0) - sel[0].t_ms) i = 0;
+    const P = fixSides(sel[i].landmarks.map(p => [p[0] * c.width, p[1] * c.height, 0]));
+    g.clearRect(0, 0, c.width, c.height); drawSkeleton(c, P, c.width, c.height);
+    g.fillStyle = css("--muted"); g.font = "14px system-ui"; g.fillText(`${f.id} · ${((sel[i].t_ms - t0) / 1000).toFixed(1)} s`, 10, 20);
+    if (state.replayFor === f.id) requestAnimationFrame(step);
+  };
+  state.replayFor = f.id; requestAnimationFrame(step);
+}
+
+// ---------------------------------------------------------------- wiring
+$("btnCam").onclick = startCamera;
+$("file").onchange = e => e.target.files[0] && loadFile(e.target.files[0]);
+$("btnRec").onclick = () => state.recording ? stopRecording() : startRecording();
+window.__rehab = {submit, render, state};                       // test hooks
+(async () => {
+  try {
+    state.health = await (await fetch("/api/health")).json();
+    $("exercise").innerHTML = Object.entries(state.health.exercises).map(([k, v]) =>
+      `<option value="${k}">${k} · ${esc(v.split(":")[0])}${state.health.validated_checks[k]?.length ? "" : " (no validated checks)"}</option>`).join("");
+    $("exercise").value = "ELK";
+    $("strictness").innerHTML = state.health.strictness.map(s => `<option ${s === "standard" ? "selected" : ""}>${s}</option>`).join("");
+    $("useLlm").disabled = !state.health.llm;
+  } catch (e) { msg(`Server not reachable: run python app\\server.py (${e.message})`, true); return; }
+  showLive(null);
+  try { msg("Loading MediaPipe…"); state.landmarker = await loadLandmarker(); msg("Ready: start the camera or choose a video file."); }
+  catch (e) { msg(`MediaPipe failed to load (${e.message}). Check the internet connection for the CDN.`, true); }
+  $("btnRec").disabled = !(state.landmarker && state.running);
+})();
+</script>
+</body>
+</html>

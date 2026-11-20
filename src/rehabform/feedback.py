@@ -316,3 +316,14 @@ def write_feedback(findings: list[Finding], exercise: str, llm: LLMClient | None
         return Feedback(draft, "llm", draft, rep, rep)
     text = template_feedback(findings)
     return Feedback(text, "template", draft, rep, check(text, findings))
+
+
+def split_for_app(text: str, findings: list[Finding]) -> dict:
+    """Feedback for an app: the plain text, and each sentence with the findings it cites
+    (so the clinician view can link a sentence to its measurement and time window)."""
+    from .claims import split_sentences
+    sents = []
+    for s in split_sentences(text):
+        cites = [c.strip() for m in re.findall(r"\[\s*(F\d+(?:\s*,\s*F\d+)*)\s*\]", s) for c in m.split(",")]
+        sents.append({"text": strip_tags(s), "cites": cites})
+    return {"text": strip_tags(text), "sentences": sents}
