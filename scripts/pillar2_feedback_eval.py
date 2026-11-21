@@ -118,6 +118,9 @@ def main() -> None:
     ap.add_argument("--model")
     ap.add_argument("--api-key-env", help="name of the environment variable (or .env entry) holding the key")
     ap.add_argument("--env-file", default=".env")
+    ap.add_argument("--prompt-version", type=int, choices=[1, 2], default=2,
+                    help="1 = the 20 Nov prompts (correction first); 2 = no correction when every check passes (both writers)")
+    ap.add_argument("--max-tokens", type=int, default=2048, help="answer budget per call (reasoning included)")
     ap.add_argument("--reasoning-effort", choices=["low", "medium", "high"],
                     help="for reasoning models such as gpt-oss (low = fewer tokens, fewer empty replies)")
     ap.add_argument("--list-models", action="store_true", help="print the endpoint's models and stop")
@@ -145,7 +148,7 @@ def main() -> None:
         if not (args.base_url and args.model):
             raise SystemExit("--llm needs --base-url and --model")
         llm = LLMClient(args.base_url, args.model, args.api_key_env, cache_path=out / "llm_cache.jsonl",
-                        reasoning_effort=args.reasoning_effort)
+                        reasoning_effort=args.reasoning_effort, max_tokens=args.max_tokens)
 
     recs = [r for root in args.roots for r in iter_annotated_recordings(root) if r.blazepose]
     clocks, clock_typical, n_plausible = estimate_clocks(recs)
@@ -153,7 +156,14 @@ def main() -> None:
           f"their median original rate {clock_typical:.1f} fps is used for the others")
     llm_keys = {r.key for r in recs}
     if llm and args.limit:
-        llm_keys = set(random.Random(0).sample(sorted(llm_keys), min(args.limit, len(llm_keys))))
+        if args.prompt_version == 1:              # exactly the 20 Nov sample
+            llm_keys = set(random.Random(0).sample(sorted(llm_keys), min(args.limit, len(llm_keys))))
+        else:
+            # only exercises with validated checks (both writers have something to say), and a fixed shuffled
+            # order so --limit 30 is a subset of --limit 60 and finished calls are reused
+            checked = {d["exercise"] for d in engine.detectors.values()}
+            pool = sorted(r.key for r in recs if r.exercise in checked)
+            llm_keys = set(random.Random(0).sample(pool, len(pool))[:args.limit])
 
     rows, examples = [], []
     det_stats = defaultdict(Counter)
@@ -252,7 +262,7 @@ def main() -> None:
         score("template", tmpl)
         if llm and r.key in llm_keys:
             try:
-                res = write_feedback(findings, r.exercise, llm)
+                res = write_feedback(findings, r.exercise, llm, prompt_version=args.prompt_version)
                 if res.draft is not None:                  # an LLM call was made (exercise has findings)
                     fb["llm_total"] += 1
                     fb["llm_draft_pass"] += res.source == "llm"
@@ -267,7 +277,7 @@ def main() -> None:
                 row.update(grounded_final=strip_tags(res.text), grounded_source=res.source)
                 score("grounded", res.text)                # what the patient would see
                 if args.baseline:
-                    base = llm(baseline_prompt(bp, r.exercise))
+                    base = llm(baseline_prompt(bp, r.exercise, version=args.prompt_version))
                     row["baseline"] = base
                     score("baseline", base)
             except RateLimited as exc:

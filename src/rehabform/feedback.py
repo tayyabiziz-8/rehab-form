@@ -94,7 +94,9 @@ def strip_tags(text: str) -> str:
 # ---------------------------------------------------------------------------
 # prompts
 # ---------------------------------------------------------------------------
-GROUNDED_SYSTEM = """You write short exercise feedback for a physiotherapy patient at home.
+# v1 (20 Nov): "most important correction first" made models invent a correction when every check passed
+# (gpt-oss-120b: 22 contradictions in 71 sentences). Kept for reproducing the first runs.
+GROUNDED_SYSTEM_V1 = """You write short exercise feedback for a physiotherapy patient at home.
 You are given FINDINGS measured from their video. Rules:
 1. Use ONLY the findings. Do not add any other observation, body part, side (left/right), number or time.
 2. Quote a number only if it appears in that finding's "numbers" list, unchanged (you may drop the unit "shoulder widths" but not change the value).
@@ -103,13 +105,45 @@ You are given FINDINGS measured from their video. Rules:
 5. Plain, warm language for a patient. No medical advice, no diagnosis, no mention of pain or injury.
 Output only the feedback text."""
 
-BASELINE_SYSTEM = """You write short exercise feedback for a physiotherapy patient at home.
+GROUNDED_SYSTEM = """You write short exercise feedback for a physiotherapy patient at home.
+You are given FINDINGS measured from their video. Each finding is a check that either found a problem (status "error") or passed (status "ok").
+Rules:
+1. Use ONLY the findings. Add no other observation, body part, side (left/right), number or time.
+2. For each finding with status "error": one sentence telling the patient what to change, using its "advice".
+3. For a finding with status "ok": you may praise it in one sentence. NEVER ask the patient to change anything a passed check covers, not even "a little".
+4. If no finding has status "error", give no correction at all: praise only.
+5. Numbers are optional. If you use one, copy a phrase from that finding's "you_may_quote" list exactly, unit included (for example "0.8 shoulder widths", "12°"). No other numbers.
+6. End EVERY sentence with the id of the finding it is about, in square brackets: "... higher. [F1]". A sentence about no finding is allowed only if it is a short encouragement with no body part and no number ("Keep it up!").
+7. At most 3 sentences. Plain, warm language. No medical advice, no diagnosis, no mention of pain or injury.
+Output only the feedback text."""
+
+BASELINE_SYSTEM_V1 = """You write short exercise feedback for a physiotherapy patient at home.
 You are given the exercise and the patient's body-landmark positions over time (image pixels, y grows downwards).
 Write 2 to 4 sentences: the most important correction first, then one thing that went well.
 Plain, warm language for a patient. No medical advice, no diagnosis. Output only the feedback text."""
 
+# v2: same freedom as the grounded v2 prompt to say "no correction needed", so the comparison is fair
+BASELINE_SYSTEM = """You write short exercise feedback for a physiotherapy patient at home.
+You are given the exercise and the patient's body-landmark positions over time (image pixels, y grows downwards).
+If you see a clear problem, give at most one or two corrections. If the movement looks correct, say so and do not invent a correction.
+At most 3 sentences. Plain, warm language for a patient. No medical advice, no diagnosis. Output only the feedback text."""
 
-def grounded_prompt(findings: list[Finding], exercise: str) -> list[dict]:
+
+def _quotable_phrases(f: Finding) -> list[str]:
+    out = []
+    if f.quotable and f.value is not None:
+        if f.value < 0 and f.measure_label.endswith("above your shoulders"):
+            out.append(f"{_fmt(abs(f.value), f.unit)} below your shoulders")
+        else:
+            out.append(_fmt(f.value, f.unit))
+        if f.typical is not None:
+            out.append(_fmt(f.typical, f.unit))
+    if f.start_s is not None and f.end_s is not None:
+        out.append(f"around {f.start_s:g}–{f.end_s:g} s")
+    return out
+
+
+def grounded_prompt(findings: list[Finding], exercise: str, version: int = 2) -> list[dict]:
     items = []
     for f in findings:
         item = {"id": f.id, "status": f.status, "checked": f.issue, "advice": f.advice,
@@ -124,11 +158,19 @@ def grounded_prompt(findings: list[Finding], exercise: str) -> list[dict]:
             item["measure"] = f.measure_label
             item["measured"] = _fmt(f.value, f.unit)
             item["typical_when_correct"] = _fmt(f.typical, f.unit)
-        item["numbers"] = [x for x in f.allowed_numbers()]
+        if version == 1:
+            item["numbers"] = [x for x in f.allowed_numbers()]
+        else:
+            item.pop("time_window_s")
+            if item.get("measured") and f.value is not None and f.value < 0 \
+                    and f.measure_label.endswith("above your shoulders"):
+                item["measured"] = f"{_fmt(abs(f.value), f.unit)} below your shoulders"
+            item["you_may_quote"] = _quotable_phrases(f)
         items.append(item)
     user = (f"Exercise: {EXERCISES.get(exercise, exercise)}\n"
             f"FINDINGS:\n{json.dumps(items, ensure_ascii=False, indent=1)}")
-    return [{"role": "system", "content": GROUNDED_SYSTEM}, {"role": "user", "content": user}]
+    system = GROUNDED_SYSTEM_V1 if version == 1 else GROUNDED_SYSTEM
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
 UPPER = {"nose": 0, "l_shoulder": 11, "r_shoulder": 12, "l_elbow": 13, "r_elbow": 14,
@@ -136,7 +178,7 @@ UPPER = {"nose": 0, "l_shoulder": 11, "r_shoulder": 12, "l_elbow": 13, "r_elbow"
 
 
 def baseline_prompt(bp: np.ndarray, exercise: str, fps: float = 10.0, every_s: float = 0.5,
-                    max_chars: int = 9000) -> list[dict]:
+                    max_chars: int = 9000, version: int = 2) -> list[dict]:
     """The pose sequence alone (upper body, rounded pixels), no measurements.
 
     Compact table: one header, one row per sample. Sampled every 0.5 s, or
@@ -161,7 +203,8 @@ def baseline_prompt(bp: np.ndarray, exercise: str, fps: float = 10.0, every_s: f
     user = (f"Exercise: {EXERCISES.get(exercise, exercise)}\n"
             f"Landmarks every {step / fps:g} s (x, y pixels, y grows downwards; person's left = l_).\n"
             f"Columns: {json.dumps(header)}\n{table}")
-    return [{"role": "system", "content": BASELINE_SYSTEM}, {"role": "user", "content": user}]
+    system = BASELINE_SYSTEM_V1 if version == 1 else BASELINE_SYSTEM
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
 # ---------------------------------------------------------------------------
@@ -304,13 +347,14 @@ def patient_findings(findings: list[Finding]) -> list[Finding]:
     return [f for f in findings if f.status != "borderline"]
 
 
-def write_feedback(findings: list[Finding], exercise: str, llm: LLMClient | None = None) -> Feedback:
+def write_feedback(findings: list[Finding], exercise: str, llm: LLMClient | None = None,
+                   prompt_version: int = 2) -> Feedback:
     """LLM draft -> claim check -> template if the draft fails (or no LLM)."""
     findings = patient_findings(findings)
     if llm is None or not findings:
         text = template_feedback(findings)
         return Feedback(text, "template_only", None, None, check(text, findings))
-    draft = llm(grounded_prompt(findings, exercise))
+    draft = llm(grounded_prompt(findings, exercise, version=prompt_version))
     rep = check(draft, findings)
     if rep.ok and rep.n_claims > 0:
         return Feedback(draft, "llm", draft, rep, rep)
