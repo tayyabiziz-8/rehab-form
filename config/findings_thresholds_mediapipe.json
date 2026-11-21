@@ -6,12 +6,12 @@
       {
         "feature": "arm_peak_mean",
         "side": "max",
-        "limit": 301.15
+        "limit": 198.805
       },
       {
         "feature": "wrist_height_p95",
         "side": "max",
-        "limit": 1.884
+        "limit": 2.01
       }
     ]
   },
@@ -24,25 +24,20 @@
       "keraal_error": "Error1",
       "meaning": "arms not raised enough",
       "body_part": "BothArms",
-      "feature": "elbow_mean_p50",
-      "direction": "above",
-      "threshold": 88.537,
-      "unit": "deg image-plane elbow bend (proxy)",
-      "reportable": false,
-      "guard": {
-        "feature": "arm_peak_mean",
-        "direction": "below",
-        "ok_limit": 94.926,
-        "unit": "deg arm elevation"
-      },
-      "typical_correct": 69.731,
-      "severity_cut": 110.166,
+      "feature": "arm_peak_mean",
+      "direction": "below",
+      "threshold": 86.089,
+      "unit": "deg arm elevation",
+      "reportable": true,
+      "guard": null,
+      "typical_correct": 100.332,
+      "severity_cut": 59.403,
       "evidence": {
-        "loso_sensitivity": 0.68,
-        "loso_specificity": 0.867,
+        "loso_sensitivity": 0.88,
+        "loso_specificity": 0.756,
         "kappa_clinicians": 0.606,
-        "kappa_system_A": 0.41,
-        "kappa_system_B": 0.509,
+        "kappa_system_A": 0.461,
+        "kappa_system_B": 0.397,
         "n_error": 25,
         "n_correct": 45,
         "people_error": 7
@@ -58,7 +53,7 @@
       "body_part": "BothArms",
       "feature": "elbow_reach_p95",
       "direction": "above",
-      "threshold": 137.5,
+      "threshold": 141.148,
       "unit": "deg image-plane elbow bend (proxy)",
       "reportable": false,
       "guard": {
@@ -67,14 +62,14 @@
         "ok_limit": 2.696,
         "unit": "shoulder widths between wrists"
       },
-      "typical_correct": 121.784,
-      "severity_cut": null,
+      "typical_correct": 111.573,
+      "severity_cut": 164.645,
       "evidence": {
         "loso_sensitivity": 0.0,
         "loso_specificity": 0.844,
         "kappa_clinicians": 0.594,
-        "kappa_system_A": -0.207,
-        "kappa_system_B": -0.114,
+        "kappa_system_A": -0.201,
+        "kappa_system_B": -0.112,
         "n_error": 13,
         "n_correct": 45,
         "people_error": 2
@@ -90,23 +85,23 @@
       "body_part": "Spine",
       "feature": "lean_abs_p95",
       "direction": "below",
-      "threshold": 14.631,
+      "threshold": 14.418,
       "unit": "deg trunk lean from start",
       "reportable": true,
       "guard": null,
       "typical_correct": 21.781,
-      "severity_cut": 7.404,
+      "severity_cut": 7.111,
       "evidence": {
         "loso_sensitivity": 0.895,
         "loso_specificity": 0.909,
         "kappa_clinicians": 0.427,
-        "kappa_system_A": 0.573,
-        "kappa_system_B": 0.491,
+        "kappa_system_A": 0.509,
+        "kappa_system_B": 0.543,
         "n_error": 38,
         "n_correct": 11,
         "people_error": 4
       },
-      "borderline_margin": 0.0
+      "borderline_margin": 1.461
     },
     "RTK_arms_not_raised": {
       "usable": false,
@@ -115,20 +110,20 @@
       "keraal_error": "Error1",
       "meaning": "arms not raised enough",
       "body_part": "BothArms",
-      "feature": "wrist_height_p95",
+      "feature": "arm_peak_mean",
       "direction": "below",
-      "threshold": 0.117,
-      "unit": "shoulder widths above the shoulders",
+      "threshold": 87.095,
+      "unit": "deg arm elevation",
       "reportable": true,
       "guard": null,
-      "typical_correct": 0.374,
-      "severity_cut": null,
+      "typical_correct": 88.84,
+      "severity_cut": 69.904,
       "evidence": {
-        "loso_sensitivity": 0.5,
-        "loso_specificity": 0.757,
+        "loso_sensitivity": 0.75,
+        "loso_specificity": 0.622,
         "kappa_clinicians": 0.643,
-        "kappa_system_A": 0.128,
-        "kappa_system_B": 0.099,
+        "kappa_system_A": 0.1,
+        "kappa_system_B": 0.142,
         "n_error": 4,
         "n_correct": 37,
         "people_error": 3
@@ -149,7 +144,7 @@
       "reportable": true,
       "guard": null,
       "typical_correct": 6.213,
-      "severity_cut": 2.96,
+      "severity_cut": 2.951,
       "evidence": {
         "loso_sensitivity": 0.667,
         "loso_specificity": 0.892,

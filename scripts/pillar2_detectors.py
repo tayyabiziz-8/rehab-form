@@ -214,6 +214,9 @@ def main() -> None:
         best_for_config = None
         cand = {}
         for feat, direction, reportable, unit in det["candidates"]:
+            if feat not in rr[0]:          # features file older than this candidate
+                print(f"  {feat:17s} not in the features file (rerun pillar2_error_signals.py) -> skipped")
+                continue
             x = np.array([as_float(r[feat]) for r in rr])
             pred = np.zeros(len(rr), bool)
             for p in np.unique(people):
@@ -306,11 +309,15 @@ def main() -> None:
             x = x[np.isfinite(x)]
             if len(x) < 20:
                 continue
-            lo, hi = np.percentile(x, 1), np.percentile(x, 99)
-            pad = 0.10 * (hi - lo)
+            # p5/p95 + a quarter of their spread: with ~90 recordings p1/p99 are single recordings, and on
+            # MediaPipe those can be pose failures (21 Nov: CTK limit landed at 301 deg of 'arm elevation')
+            lo, hi = np.percentile(x, 5), np.percentile(x, 95)
+            pad = 0.25 * (hi - lo)
             limit = hi + pad if side == "max" else lo - pad
+            outside = int(np.sum(x > limit) if side == "max" else np.sum(x < limit))
             envelopes.setdefault(ex, []).append({"feature": feat, "side": side, "limit": round(float(limit), 3)})
-            print(f"  {ex} {feat}: {side} {limit:.2f}  (Keraal p1 {lo:.2f}, p99 {hi:.2f}, n={len(x)})")
+            print(f"  {ex} {feat}: {side} {limit:.2f}  (Keraal p5 {lo:.2f}, p95 {hi:.2f}, n={len(x)}; "
+                  f"{outside} Keraal recordings would be called 'not this exercise')")
 
     print("\n=== borderline band (no patient correction just past the threshold)")
     for det_id, cfg in thresholds.items():

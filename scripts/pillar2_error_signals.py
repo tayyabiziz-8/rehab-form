@@ -216,7 +216,8 @@ def main() -> None:
             except Exception:
                 votes["kinect error"] += 1
         row = dict(by_key[r.key])
-        row.update(sides_swapped=info["swapped"], frames_reversed=round(info["frames_reversed"], 3))
+        row.update(sides_swapped=info["swapped"], frames_reversed=round(info["frames_reversed"], 3),
+                   frames_fixed=round(info.get("frames_fixed", 0.0), 3))
         row.update({k: (round(v, 3) if isinstance(v, float) else v) for k, v in features(bp).items()})
         rows.append(row)
         if i % 50 == 0:
@@ -232,7 +233,7 @@ def main() -> None:
     print(f"ELK, fixed BlazePose vs Kinect arm movement: {dict(votes)}  (want: mostly 'agrees')")
     fr = [r["frames_reversed"] for r in rows if np.isfinite(r["frames_reversed"])]
     if fr:
-        print(f"frames still reversed within a recording: median {np.median(fr):.1%}, "
+        print(f"frames reversed within a recording (each re-labelled one by one since 21 Nov): median {np.median(fr):.1%}, "
               f"recordings with >10%: {sum(x > 0.10 for x in fr)}")
 
     with open(out / f"keraal_labels{suffix}.csv", "w", newline="", encoding="utf-8") as f:
@@ -244,7 +245,7 @@ def main() -> None:
         w.writeheader()
         w.writerows(rows)
 
-    feat_names = [k for k in rows[0] if k not in labels[0] and k not in ("sides_swapped", "frames_reversed")]
+    feat_names = [k for k in rows[0] if k not in labels[0] and k not in ("sides_swapped", "frames_reversed", "frames_fixed")]
     print("\n=== which feature separates each error from 'both said Correct' (AUC, best 4)")
     print("    higher = the feature is larger in the error recordings; lower = smaller")
     auc_rows = []

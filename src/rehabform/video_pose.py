@@ -107,8 +107,9 @@ def cached_pose(video: str | Path, model: str | Path, cache_dir: str | Path, key
         c = np.load(cache)
         bp = c["bp"]
         missing = float(c["missing"]) if "missing" in c else float(np.isnan(bp[:, 11, 0]).mean())
-        return bp, {"missing_fraction": missing, "swapped": bool(c["swapped"]) if "swapped" in c else False,
-                    "frames_reversed": float("nan"), "cached": True}
+        bp, side_info = canonical_sides(bp)               # older caches: per-frame fix applied here
+        return bp, {"missing_fraction": missing, **side_info,
+                    "swapped": bool(c["swapped"]) if "swapped" in c else side_info["swapped"], "cached": True}
     bp, info = pose_from_video(video, model, min_confidence=min_confidence)
     cache.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(cache, bp=bp, missing=info["missing_fraction"], swapped=info["swapped"])

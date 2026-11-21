@@ -187,7 +187,10 @@ def _swap_index() -> list[int]:
     return out
 
 
-def canonical_sides(bp: np.ndarray) -> tuple[np.ndarray, dict]:
+PER_FRAME_MARGIN = 0.25   # a frame is re-labelled only when its order is clearly reversed (x gap > 25% of usual)
+
+
+def canonical_sides(bp: np.ndarray, per_frame: bool = True) -> tuple[np.ndarray, dict]:
     """Make 'Left_*' the person's real left, assuming they face the camera.
 
     Why: after un-mirroring (x -> 1 - x, which the 1A/2A overlays confirm),
@@ -197,9 +200,17 @@ def canonical_sides(bp: np.ndarray) -> tuple[np.ndarray, dict]:
     and hip must be on the IMAGE RIGHT (larger x). If the recording's median
     says otherwise, every Left_/Right_ pair is swapped.
 
+    With ``per_frame`` (21 Nov), single frames whose order is still clearly
+    reversed after that are re-labelled too. Our MediaPipe flips left/right in
+    a median 13-15% of CTK/ELK frames on Keraal videos; every flip turns the
+    shoulder line round, so arm angles jumped by ~180 deg and accumulated
+    (arm 'elevations' of 270-450 deg in the 21 Nov features). A person facing
+    the camera cannot have their left shoulder on the image left.
+
     Returns (fixed array, info) with info = {'swapped': bool,
-    'frames_reversed': fraction of frames whose own order disagrees with the
-    recording after the fix (BlazePose flicker; reported, not changed)}.
+    'frames_fixed': fraction of frames re-labelled one by one,
+    'frames_reversed': fraction of frames whose order disagrees with the
+    recording before the per-frame fix}.
     """
     d = (bp[:, _L_SH, 0] - bp[:, _R_SH, 0]) + (bp[:, _L_HIP, 0] - bp[:, _R_HIP, 0])
     ok = np.isfinite(d)
@@ -208,7 +219,15 @@ def canonical_sides(bp: np.ndarray) -> tuple[np.ndarray, dict]:
         bp = bp[:, _swap_index()]
         d = -d
     frac = float(np.mean(d[ok] < 0)) if ok.any() else float("nan")
-    return bp, {"swapped": swapped, "frames_reversed": frac}
+    fixed = 0.0
+    if per_frame and ok.any():
+        usual = float(np.median(np.abs(d[ok])))
+        flip = ok & (d < -PER_FRAME_MARGIN * usual)
+        if flip.any():
+            bp = bp.copy()
+            bp[flip] = bp[flip][:, _swap_index()]
+            fixed = float(flip[ok].mean())
+    return bp, {"swapped": swapped, "frames_reversed": frac, "frames_fixed": fixed}
 
 
 def load_blazepose_g12(path: str | Path, image_size=IMAGE_SIZE_G12) -> tuple[np.ndarray, dict]:

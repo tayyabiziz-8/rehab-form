@@ -46,11 +46,24 @@ SIDES = {"l": (L_SHOULDER, L_ELBOW, L_WRIST, L_HIP, R_SHOULDER),
          "r": (R_SHOULDER, R_ELBOW, R_WRIST, R_HIP, L_SHOULDER)}
 
 
+MAX_GAP = 3   # frames: an angle is unwrapped only across short gaps
+
+
 def _unwrap_deg(a: np.ndarray) -> np.ndarray:
+    """Unwrap within runs of nearly continuous frames, then put each run back so its median lies in
+    (-180, 180]. Unwrapping across long gaps (person lost) let one bad frame shift everything after it
+    by 360 deg (21 Nov: arm angles up to 450 deg)."""
     out = a.copy()
-    ok = np.isfinite(a)
-    if ok.sum() > 1:
-        out[ok] = np.degrees(np.unwrap(np.radians(a[ok])))
+    idx = np.flatnonzero(np.isfinite(a))
+    if len(idx) < 2:
+        return out
+    breaks = np.flatnonzero(np.diff(idx) > MAX_GAP + 1) + 1
+    for run in np.split(idx, breaks):
+        if len(run) < 2:
+            continue
+        u = np.degrees(np.unwrap(np.radians(a[run])))
+        u -= 360.0 * np.round((np.median(u) - 1e-9) / 360.0)
+        out[run] = u
     return out
 
 
@@ -100,7 +113,10 @@ def trunk_lean(lm: np.ndarray):
     P = lm[..., :2]
     trunk = (P[:, L_SHOULDER] + P[:, R_SHOULDER]) / 2 - (P[:, L_HIP] + P[:, R_HIP]) / 2
     angle = np.degrees(np.arctan2(trunk[:, 0], -trunk[:, 1]))      # person's left = image right (+x)
-    return angle, np.isfinite(angle)
+    # hips above the shoulders (|tilt| > 90) is a pose-estimator failure, not a bend (21 Nov: 'bends' of 170-180 deg)
+    valid = np.isfinite(angle) & (np.abs(angle) <= 90)
+    angle[~valid] = np.nan
+    return angle, valid
 
 
 def trunk_rotation(lm: np.ndarray):

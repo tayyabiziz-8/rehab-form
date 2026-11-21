@@ -6,12 +6,12 @@
       {
         "feature": "arm_peak_mean",
         "side": "max",
-        "limit": 321.769
+        "limit": 227.09
       },
       {
         "feature": "wrist_height_p95",
         "side": "max",
-        "limit": 1.738
+        "limit": 1.943
       }
     ]
   },
@@ -84,19 +84,19 @@
       "unit": "deg trunk lean range",
       "reportable": true,
       "guard": null,
-      "typical_correct": 32.267,
-      "severity_cut": 14.504,
+      "typical_correct": 27.896,
+      "severity_cut": 14.311,
       "evidence": {
-        "loso_sensitivity": 0.791,
+        "loso_sensitivity": 0.814,
         "loso_specificity": 0.933,
         "kappa_clinicians": 0.43,
-        "kappa_system_A": 0.534,
-        "kappa_system_B": 0.43,
+        "kappa_system_A": 0.558,
+        "kappa_system_B": 0.449,
         "n_error": 43,
         "n_correct": 15,
         "people_error": 5
       },
-      "borderline_margin": 1.13
+      "borderline_margin": 1.753
     },
     "RTK_arms_not_raised": {
       "usable": false,
@@ -111,14 +111,14 @@
       "unit": "deg arm elevation",
       "reportable": true,
       "guard": null,
-      "typical_correct": 93.616,
-      "severity_cut": 69.802,
+      "typical_correct": 94.038,
+      "severity_cut": 69.797,
       "evidence": {
         "loso_sensitivity": 0.75,
-        "loso_specificity": 0.588,
+        "loso_specificity": 0.686,
         "kappa_clinicians": 0.648,
-        "kappa_system_A": 0.064,
-        "kappa_system_B": 0.146,
+        "kappa_system_A": 0.119,
+        "kappa_system_B": 0.164,
         "n_error": 4,
         "n_correct": 51,
         "people_error": 3
@@ -132,20 +132,25 @@
       "keraal_error": "Error2",
       "meaning": "torso rotation not sufficient (Spine)",
       "body_part": "Spine",
-      "feature": "lean_range",
+      "feature": "rotation_range",
       "direction": "below",
-      "threshold": 4.05,
-      "unit": "deg trunk lean range",
-      "reportable": true,
-      "guard": null,
-      "typical_correct": 5.515,
+      "threshold": 142.949,
+      "unit": "BlazePose depth rotation (timing only)",
+      "reportable": false,
+      "guard": {
+        "feature": "lean_range",
+        "direction": "below",
+        "ok_limit": 5.515,
+        "unit": "deg trunk lean range"
+      },
+      "typical_correct": 137.274,
       "severity_cut": null,
       "evidence": {
-        "loso_sensitivity": 0.5,
-        "loso_specificity": 0.686,
+        "loso_sensitivity": 0.833,
+        "loso_specificity": 0.706,
         "kappa_clinicians": 0.305,
-        "kappa_system_A": 0.064,
-        "kappa_system_B": 0.137,
+        "kappa_system_A": 0.151,
+        "kappa_system_B": 0.419,
         "n_error": 6,
         "n_correct": 51,
         "people_error": 2

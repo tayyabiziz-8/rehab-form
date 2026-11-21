@@ -98,6 +98,28 @@ def test_weak_repetition_found_from_the_arm():
     assert f.window_source == "worst_rep" and f.start_s < 11            # a weak one, not the good middle one
 
 
+def test_left_right_flicker_and_long_gaps_do_not_corrupt_angles():
+    """21 Nov MediaPipe features: arm 'elevations' of 270-450 deg and side bends of 170-180 deg."""
+    from rehabform.angles import arm_elevation, trunk_lean
+    from rehabform.keraal_groups import _swap_index, canonical_sides
+    bp = elk_sequence(20, T=200, reps=[1.0, 1.0, 1.0])
+    clean = arm_elevation(bp, "l")[0]
+    bad = bp.copy()
+    flick = np.arange(200) % 7 == 3                     # ~14% of frames labelled the wrong way round
+    bad[flick] = bad[flick][:, _swap_index()]
+    bad[60:80] = np.nan                                 # person lost for 2 s
+    fixed, info = canonical_sides(bad)
+    assert not info["swapped"] and 0.1 < info["frames_fixed"] < 0.2
+    a = arm_elevation(fixed, "l")[0]
+    ok = np.isfinite(a) & np.isfinite(clean)
+    assert np.nanmax(np.abs(a[ok] - clean[ok])) < 1e-3   # identical to the clean recording
+    assert np.nanmax(a) < 200
+    upside = bp.copy()
+    upside[50, [11, 12], 1] = 400                        # shoulders below the hips in one frame
+    lean, valid = trunk_lean(upside)
+    assert not valid[50] and np.isnan(lean[50]) and valid[49]
+
+
 def test_proxy_guard_and_exercise_envelope():
     """21 Nov: arms overhead with bent elbows made the CTK elbow-bend proxy say 'raise your arms higher'."""
     with tempfile.TemporaryDirectory() as d:
