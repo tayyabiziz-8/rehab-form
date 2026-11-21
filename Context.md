@@ -1,10 +1,10 @@
 # FYP Context — Measured, Grounded Feedback for Home Physiotherapy
 
-**Last updated:** 21 Nov 2026, 01:30 PKT (living file; replaces `FYP_Context_Status.md` and `FYP_Context_Status_v2.md`)
+**Last updated:** 21 Nov 2026, 14:00 PKT (living file; replaces `FYP_Context_Status.md` and `FYP_Context_Status_v2.md`)
 **Team:** Tayyab Irfan Aziz (BSCS23028), Muhammad Zair (BSCS23034), Ali Gohar (BSCS23037), Zain Gulzar (BSCS23151)
 **Institution:** Department of Computer Science, Information Technology University (ITU)
 **Working title:** *Measured, Grounded Feedback for Home Physiotherapy from a Single Phone*
-**Next milestone:** progress presentation to supervisor (assumed ~28 Nov 2026)
+**Next milestone:** progress presentation to supervisor (~2 Dec 2026, moved from ~28 Nov)
 **Current week:** Week 3 of 4 (16–22 Nov 2026)
 
 ---
@@ -18,6 +18,10 @@
 - **Open risk:** our MediaPipe found the person in only 44% of frames on an anonymised Keraal video (blurred face + drawn skeleton) → `--contact-sheet` / `--min-confidence 0.3` runs and own phone recordings pending; `validate_mediapipe_keraal.py` (40 videos) rerun pending.
 - **20 Nov night results:** own phone ELK video → person found 100%, sides right, 4 reps, check 'ok' (67° side-to-side range vs ~32° typical) → the phone pipeline works on real video. Anonymised Keraal videos: MediaPipe often misses the person (Roscoff 4–77%). **Thresholds don't transfer between pose estimators:** own MediaPipe vs shipped BlazePose side-bend range r 0.21, hand height r 0.48; ELK decisions changed in 7/20 → refit checks on our own MediaPipe (`pillar2_error_signals.py --pose mediapipe` → `pillar2_detectors.py --features outputs/keraal_features_mediapipe.csv --thresholds config/findings_thresholds_mediapipe.json`). Borderline rule changed (zone of most clinician disagreement, ≤10 pts sensitivity cost, ≥5 recordings → CTK 0.036, ELK 1.13°). Time windows: even any-repetition overlap only 32–40% → alignment problem; `pillar2_windows_debug.csv` to inspect.
 - **21 Nov refit on own MediaPipe (253/301 recs):** ELK body-not-tilted → `lean_abs_p95`, LOSO sens 89% spec 91%, kappa 0.57/0.49 vs clinicians 0.43 (4 people with error, 11 correct). CTK arms-not-raised → elbow-bend proxy (not quoted), sens 72% spec 84%, kappa 0.41/0.50 vs 0.61. App + session_report now default to `config/findings_thresholds_mediapipe.json`. Shipped-skeleton borderline (new rule): CTK 0.036 (50% disagree in band vs 9% out), ELK 1.13° (60% vs 26%). **Time-window bug found (inverted clock scale, mine) → fixed;** overlap on the debug dump 45% vs chance 30%; repetition finding misses many reps (next for windows). Handoff doc 'What is validated' updated to MediaPipe numbers.
+- **21 Nov first full LLM comparison (gpt-oss-120b, prompt v1, 59 recs):** grounded drafts pass checker 12/39, 49% of sentences unsupported (22 corrections of PASSED checks, 10 untagged, 6 no unit) → 0 shown after fallback. False alarms on both-Correct recordings: pose-only baseline 92% vs grounded 8% (template 8%); labelled errors addressed 84% vs 45% (48%). Baseline invents asymmetries and praises arms that clinicians said were too low. Windows with fixed clock: CTK 36% vs chance 29%, ELK 48% vs 29%. Cause of rejections: v1 prompts said 'most important correction first' → prompt v2 for both writers (no correction when all checks pass; numbers as exact quotable phrases; fair baseline) + CTK/ELK-only prefix-stable sample. Next: v2 runs, --limit 30 --reasoning-effort low, out-dirs llm_*_v2. 20b hit daily limit again.
+- **21 Nov (afternoon):** both Groq models hit daily limits again (v2 runs pending). Built `scripts/kimore_benchmark.py` (majority / logreg / MiniRocket / FCN × all KIMORE datasets × folds × 3 seeds, pooled metrics) — to run (CPU for majority/logreg/minirocket; Kaggle GPU for fcn). Related-work page: https://claude.ai/artifact/JoXR293nMZBfqkqZAfsYEF (OpenCap Monocular 4.8° MAE; BioCoach; Agentic physio (Google); Rehab-Pile LITEMV 75.5%; our gap + numbers). Supervisor report §4.3 Pillar 2 results added.
+- **21 Nov KIMORE benchmark done** (5 exercises × 5 folds × 3 seeds, pooled balanced accuracy, chance 50): majority 50.0; logistic regression on summary stats 61.1; MiniRocket 61.4; FCN 57.9 (LA: FCN one class in 12/15 fold runs). Best method varies by exercise; 31 test people per exercise → ~3 points per person, differences mostly noise. Conclusion for slides: session-level classifiers ≈ 58–61% with ~70 people → justify clinician-labelled checks. Table in supervisor report §4.1 and `kimore_benchmark_combined.md`.
+- **Presentation moved to ~2 Dec 2026 (told 21 Nov); deck on hold until asked.**
 - **Still for the presentation:** live demo (App lead), Groq comparison numbers, KIMORE mean ± std, related-work page, supervisor report update with Pillar 2.
 
 
@@ -323,6 +327,7 @@ Week-1 checkpoint: usable Group 3 count, angle spec, error-to-rule mapping, live
 
 - **Revised FYP Direction** (living plan doc, has progress log): https://claude.ai/artifact/NpSEuDjSYgiwGwRfcvXfj5
 - **App Lead Handoff — Physio Feedback App** (20 Nov): https://claude.ai/artifact/Ki6WreTBdcy9h3xdGH4YYT
+- **Related Work — one page** (21 Nov): https://claude.ai/artifact/JoXR293nMZBfqkqZAfsYEF
 - **FYP Progress Report for the supervisor** (8 Nov; §4.2 numbers are pre-correction, update after rerun; names to be added): https://claude.ai/artifact/6jT2yV1pKsKTGJ8Deo4MoF
 - FYP Meeting Brief (22 Oct): https://claude.ai/artifact/DwWRVP3UMPgFpxg4Wrv3oc
 - Development Kickoff Pack (19 Oct, partly superseded): https://claude.ai/code/artifact/c7ff0203-9430-43fd-b89f-e87503a0e761
@@ -333,7 +338,7 @@ Week-1 checkpoint: usable Group 3 count, angle spec, error-to-rule mapping, live
 ## 10. Open items
 
 - [ ] Assign the four role owners.
-- [ ] Confirm presentation date.
+- [x] Confirm presentation date: ~2 Dec 2026.
 - [x] Download Keraal Group 3 (540 usable recordings).
 - [x] Download Keraal Groups 1a and 2a (in `data\keraal1`, `data\keraal2`, 16 Nov).
 - [ ] Finish Groq LLM runs (20b, 120b) after the daily reset.
