@@ -159,10 +159,14 @@ def make_handler(app: App):
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
-            self.wfile.write(body)
+            if self.command != "HEAD":  # HEAD: same status and headers as GET, empty body
+                self.wfile.write(body)
 
         def _json(self, code: int, obj: dict) -> None:
             self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
+
+        def do_HEAD(self) -> None:  # noqa: N802
+            self.do_GET()
 
         def do_GET(self) -> None:  # noqa: N802
             path = self.path.split("?")[0]
