@@ -35,6 +35,6 @@ check("reduced motion: no shutter flash class used", c.ev("!document.getElementB
 click(c, "#btnClin"); time.sleep(1.2); check("reduced motion: clinician replay does not autoplay", c.ev("__rehab.state.rp.playing===false"))
 click(c, ".sent"); time.sleep(0.5); check("reduced motion: tapping a sentence selects it without autoplaying", c.ev("document.querySelectorAll('.sent.on').length===1 && __rehab.state.rp.playing===false"))
 c.shot(f"{S}/shots/g4-reduced.png"); done(c, "reduced motion")
-# ---------- dark colour scheme: the paper look must hold
-c = boot(video=None, fake_cam=False); c.view(360, 640, mobile=True, dark=True); c.goto(URL, wait=2)
-check("dark system theme: the page keeps its paper colours", c.ev("getComputedStyle(document.body).backgroundColor")=="rgb(233, 225, 207)", c.ev("getComputedStyle(document.body).backgroundColor")); c.close()
+# ---------- the page is Night by default and ignores the system scheme
+c = boot(video=None, fake_cam=False); c.view(360, 640, mobile=True, dark=False); c.goto(URL, wait=2)
+check("default theme is Night even when the system prefers light", c.ev("document.documentElement.dataset.theme")=="night" and c.ev("getComputedStyle(document.body).backgroundColor")!="rgb(255, 247, 236)"); c.close()

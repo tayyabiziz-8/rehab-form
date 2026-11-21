@@ -33,14 +33,17 @@ class WS:
             if fin: return msg.decode()
 
 class Chrome:
-    def __init__(self, video=None, port=9333, fake_cam=True, deny=False, extra=()):
-        self.dir = tempfile.mkdtemp(prefix="cdp-"); self.port = port
+    def __init__(self, video=None, port=None, fake_cam=True, deny=False, extra=()):
+        self.dir = tempfile.mkdtemp(prefix="cdp-")
+        if port is None:                                  # a free port per browser: a leftover Chrome must never be reused by mistake
+            with socket.socket() as t: t.bind(("127.0.0.1", 0)); port = t.getsockname()[1]
+        self.port = port
         args = ["google-chrome", "--headless=new", "--no-sandbox", f"--remote-debugging-port={port}", f"--user-data-dir={self.dir}", "--hide-scrollbars",
                 "--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--autoplay-policy=no-user-gesture-required", "--mute-audio"]
         if fake_cam: args += ["--use-fake-device-for-media-stream"] + (["--use-fake-ui-for-media-stream"] if not deny else ["--deny-permission-prompts"])
         if video: args += [f"--use-file-for-fake-video-capture={video}"]
         args += list(extra) + ["about:blank"]
-        self.p = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.p = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         for _ in range(60):
             try: tabs = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json")); break
             except Exception: time.sleep(0.25)
@@ -79,6 +82,8 @@ class Chrome:
     def grant(self, origin, perms=("videoCapture",)):
         self.cmd("Browser.grantPermissions", origin=origin, permissions=list(perms))
     def close(self):
-        try: self.p.terminate(); self.p.wait(5)
-        except Exception: self.p.kill()
+        try: os.killpg(os.getpgid(self.p.pid), 15); self.p.wait(5)      # the whole browser, not just the main process
+        except Exception:
+            try: os.killpg(os.getpgid(self.p.pid), 9)
+            except Exception: pass
         shutil.rmtree(self.dir, ignore_errors=True)

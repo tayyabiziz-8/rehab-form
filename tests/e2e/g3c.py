@@ -30,8 +30,10 @@ c.ev("__calls=0"); click(c, "#btnRec"); time.sleep(1); check("video file: Record
 ok = wait(c, "__rehab.state.screen==='result'", 90) ; check("video file: reaches the end by itself and is analysed", ok and c.ev("__calls")==1, c.ev("__rehab.state.screen")); print("   result:", S_(c)["status"], S_(c)["text"][:80])
 done(c, "G3c-1")
 # ---------- real RTK (no validated checks) and CTK
+HASH = "(()=>{const v=document.getElementById('video'),k=document.createElement('canvas'); k.width=64; k.height=36; const g=k.getContext('2d'); g.drawImage(v,0,0,64,36); const d=g.getImageData(0,0,64,36).data; let h=0; for(let i=0;i<d.length;i+=4) h=(h*31+d[i]+d[i+1]*3+d[i+2]*7)%1000003; return h})()"
+hashes = {}
 for ex in ("RTK", "CTK"):
-    c = boot(video=f"{S}/cam/{ex}.mjpeg"); pick(c, ex); open_camera(c); wait(c, "__rehab.state.found", 40)
+    c = boot(video=f"{S}/cam/{ex}.mjpeg"); pick(c, ex); open_camera(c); wait(c, "__rehab.state.found", 40); time.sleep(1); hashes[ex] = c.ev(HASH)
     click(c, "#btnRec"); wait(c, "__rehab.state.phase==='recording'", 10); time.sleep(11); click(c, "#btnRec"); ok = wait(c, "__rehab.state.screen==='result'", 30); time.sleep(2)
     r = S_(c); print(f"   {ex}:", r["status"], r["findings"], "|", (r["text"] or "")[:90])
     check(f"{ex}: real recording gets a result and the patient text matches", ok and c.ev("document.getElementById('patientText').textContent===__rehab.state.result.feedback.text"))
@@ -41,3 +43,4 @@ for ex in ("RTK", "CTK"):
         click(c, "#btnClin"); time.sleep(1.5); check(f"{ex}: clinician view opens with a replay", c.ev("__rehab.state.screen==='clinician' && !!__rehab.state.rp"))
         c.ev("window.scrollTo(0,0)"); c.shot(f"{S}/shots/g3-{ex}-clin.png")
     done(c, ex)
+check("the RTK and CTK fake cameras play different clips (so each was tested on its own footage)", hashes["RTK"] != hashes["CTK"], str(hashes))
