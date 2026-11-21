@@ -1,0 +1,17 @@
+from lib import *
+c = boot(video=None, fake_cam=False); inject_synth(c)
+a = sig(c, ".exrow canvas"); time.sleep(0.8); check("choose: exercise figures animate", a != sig(c, ".exrow canvas"))
+check("choose: row animation running while on the screen", c.ev("__rehab.ROWS.on===true"))
+pick(c, "ELK"); time.sleep(0.5); check("leaving choose stops the row animation (no wasted work)", c.ev("__rehab.ROWS.on===false"))
+check("step 2 demo animation is running", c.ev("__rehab.DEMO.on===true"))
+c.ev("__submit([10,7,10])"); wait(c, "__rehab.state.screen==='result'", 20); time.sleep(3)
+check("leaving step 2 stops the demo animation", c.ev("__rehab.DEMO.on===false"))
+q = json.loads(c.ev("JSON.stringify((()=>{const r=id=>document.getElementById(id).getBoundingClientRect(); return {text:[r('patientText').top,r('patientText').bottom], bar:document.querySelector('#s-result .sbar').getBoundingClientRect().top}})())"))
+check("phone result: the whole sentence is visible above the action bar", q["text"][1] <= q["bar"] + 1, str(q))
+check("result plate animation runs on the result screen only", c.ev("__rehab.PP.on===true")); click(c, "#btnOther"); time.sleep(0.5); check("plate animation stops when leaving", c.ev("__rehab.PP.on===false && __rehab.DEV.on===false"))
+c.shot(f"{S}/shots/g5-result.png"); done(c, "polish")
+# permission note placement
+c = Chrome(video=f"{S}/cam/ELK.mjpeg"); c.view(360, 640, mobile=True); c.grant("http://localhost:8000"); c.goto(URL, wait=2); wait(c, "__rehab.state.model!=='loading'", 45)
+pick(c, "ELK"); time.sleep(1)
+check("step 2: permission note is on screen right above the button", c.ev("(()=>{const n=document.getElementById('permNote').getBoundingClientRect(), b=document.getElementById('btnCam').getBoundingClientRect(); return !document.getElementById('permNote').hidden && n.bottom<=b.top+1 && n.top>=0 && b.bottom<=innerHeight})()"))
+c.shot(f"{S}/shots/g5-step2.png"); done(c, "perm note")

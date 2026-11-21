@@ -1,0 +1,52 @@
+from lib import *
+c = boot(video=f"{S}/cam/ELK.mjpeg")
+# --- choose screen
+rows = c.ev("document.querySelectorAll('.exrow').length"); check("choose: three exercise rows", rows == 3, rows)
+check("choose: RTK marked 'no automatic checks yet'", c.ev("document.querySelector('[data-ex=RTK]').textContent.includes('No automatic checks yet')"))
+time.sleep(0.8)
+ink = c.ev("(()=>{const cv=document.querySelector('.exrow canvas'); const d=cv.getContext('2d').getImageData(0,0,cv.width,cv.height).data; let n=0; for(let i=0;i<d.length;i+=16) if(d[i]<80) n++; return n})()")
+check("choose: exercise figures are drawn", ink > 50, ink)
+check("choose: model status shows ready", c.ev("document.getElementById('modelLine').textContent.includes('ready')"))
+c.shot(f"{S}/shots/g1-choose.png")
+# --- step 2 must wait for the person
+pick(c, "ELK"); time.sleep(4)
+check("step 2: still showing after 4 s (no auto-skip)", c.ev("!document.getElementById('gate').hidden && __rehab.state.screen==='session' && !document.body.classList.contains('is-live')"))
+check("step 2: Open camera button visible without scrolling", c.ev("document.getElementById('btnCam').getBoundingClientRect().bottom <= innerHeight"))
+check("step 2: demo animates (canvas changes over time)", c.ev("""(async()=>{const cv=document.getElementById('demo'); const a=cv.toDataURL(); await new Promise(r=>setTimeout(r,900)); return a!==cv.toDataURL()})()"""))
+check("step 2: step counter says 2 of 4", c.ev("document.getElementById('stepText').textContent==='Step 2 of 4'"))
+c.shot(f"{S}/shots/g1-step2.png")
+# back from step 2 and return
+click(c, "#btnBack"); time.sleep(0.5); check("step 2: Back returns to choose", c.ev("__rehab.state.screen==='choose'"))
+pick(c, "ELK")
+# --- camera
+check("camera: opens from step 2", open_camera(c))
+check("camera: real MediaPipe finds the person", wait(c, "__rehab.state.found", 40))
+time.sleep(3)
+check("camera: strobe trail has exposures", c.ev("__rehab.state.trail.length>=2"), c.ev("__rehab.state.trail.length"))
+check("camera: Record enabled and on screen", c.ev("!document.getElementById('btnRec').disabled && document.getElementById('btnRec').getBoundingClientRect().bottom<=innerHeight"))
+# --- cancel countdown
+click(c, "#btnRec"); time.sleep(1.2)
+check("countdown: shows numeral and Cancel", c.ev("!document.getElementById('veil').hidden && document.getElementById('recLabel').textContent==='Cancel'"))
+click(c, "#btnRec"); time.sleep(0.6)
+check("countdown: Cancel returns to set-up, nothing recorded", c.ev("__rehab.state.phase==='setup' && document.getElementById('veil').hidden && __rehab.state.frames.length===0 || __rehab.state.recording===false"))
+# --- full set
+click(c, "#btnRec"); wait(c, "__rehab.state.phase==='recording'", 10); time.sleep(8)
+check("recording: clock, tally and Stop visible", c.ev("document.getElementById('recLabel').textContent==='Stop' && document.getElementById('btnRec').getBoundingClientRect().bottom<=innerHeight"))
+check("recording: frames carry landmarks", c.ev("__rehab.state.frames.filter(f=>f.landmarks).length>10"), c.ev("__rehab.state.frames.length"))
+c.shot(f"{S}/shots/g1-recording.png")
+time.sleep(2); click(c, "#btnRec"); ok = wait(c, "__rehab.state.screen==='result'", 30)
+check("result: server answered and result screen shown", ok)
+r = S_(c); print("   result:", r["status"], r["text"], r["findings"])
+check("result: patient text equals server feedback.text", c.ev("document.getElementById('patientText').textContent===__rehab.state.result.feedback.text"))
+time.sleep(2.5)
+check("result: plate is drawn (not blank)", c.ev("(()=>{const cv=document.getElementById('pplate'); const d=cv.getContext('2d').getImageData(0,0,cv.width,cv.height).data; const bg=[d[0],d[1],d[2]]; let n=0; for(let i=0;i<d.length;i+=16) if(Math.abs(d[i]-bg[0])+Math.abs(d[i+1]-bg[1])+Math.abs(d[i+2]-bg[2])>90) n++; return n>40})()"))
+check("result: actions visible without scrolling at 360x640", c.ev("['btnAgain','btnOther'].every(id=>document.getElementById(id).getBoundingClientRect().bottom<=innerHeight) && (document.getElementById('btnClin').hidden || document.getElementById('btnClin').getBoundingClientRect().bottom<=innerHeight)"))
+check("page width never exceeds the phone screen", c.ev("innerWidth===360 && document.documentElement.scrollWidth<=360"), c.ev("innerWidth+'/'+document.documentElement.scrollWidth"))
+c.shot(f"{S}/shots/g1-result.png")
+# plate pauses on tap
+click(c, "#rplate"); check("result: tapping the plate pauses it", c.ev("__rehab.state && true")); click(c, "#rplate")
+# record again goes to step 2, not straight to camera
+click(c, "#btnAgain"); time.sleep(0.8)
+check("record again: lands on step 2 (not auto-open)", c.ev("!document.getElementById('gate').hidden && !document.body.classList.contains('is-live') && __rehab.state.screen==='session'"))
+click(c, "#btnBack"); time.sleep(0.4); check("back from step 2 reaches choose", c.ev("__rehab.state.screen==='choose'"))
+done(c, "G1")

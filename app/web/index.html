@@ -10,11 +10,12 @@
 @font-face{font-family:"Text";src:url(fonts/text-regular.woff) format("woff");font-weight:400;font-display:swap}
 @font-face{font-family:"Caption";src:url(fonts/caption.woff) format("woff");font-weight:100 800;font-stretch:75% 100%;font-display:swap}
 :root{color-scheme:light;--paper:#E9E1CF;--paper-2:#DAD1BB;--paper-3:#CBC2AB;--ink:#1F1D1A;--ink-2:#5F5746;--cobalt:#1B3FD1;--ghost:#8FA0E6;--brick:#A62E1E;--rule:rgba(31,29,26,.24)}
-*{box-sizing:border-box} html,body{margin:0}
+*{box-sizing:border-box} html,body{margin:0} html{-webkit-text-size-adjust:100%;overflow-x:clip}
 body{background:var(--paper);color:var(--ink);font:17px/1.5 "Caption",system-ui,sans-serif;min-height:100dvh;display:flex;flex-direction:column}
 h1,h2,p,ul,ol{margin:0} ul,ol{padding:0;list-style:none}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:inherit}
 :focus-visible{outline:3px solid var(--cobalt);outline-offset:3px}
+h1[tabindex="-1"]:focus{outline:none}   /* headings take focus for screen readers only; they are not controls */
 [hidden]{display:none!important}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .skip{position:absolute;left:-999px;top:8px;background:var(--cobalt);color:var(--paper);padding:8px 14px;z-index:60} .skip:focus{left:8px}
@@ -24,10 +25,17 @@ h1{font:700 clamp(30px,7.4vw,46px)/1.05 "Plate";letter-spacing:-.005em}
 
 /* ---------- chrome ---------- */
 .top{display:flex;align-items:center;gap:10px;padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top));max-width:1100px;width:100%;margin:0 auto;min-height:56px}
-.brand{font:700 20px/1 "Plate"} .stepcap{margin-left:auto;color:var(--ink-2);font-size:15px}
+.brand{font:700 20px/1 "Plate"} .stepcap{margin-left:auto;color:var(--ink-2);font-size:15px;display:flex;align-items:center}
+.pips{display:inline-flex;gap:4px;margin-right:9px} .pips i{width:9px;height:9px;box-shadow:inset 0 0 0 1.5px var(--ink-2);transition:background .3s} .pips i.on{background:var(--cobalt);box-shadow:none}
 .back{width:44px;height:44px;margin-left:-10px;display:grid;place-items:center} .back svg{width:24px;height:24px}
-main{flex:1;width:100%;max-width:1100px;margin:0 auto;padding:10px 16px 36px}
+main{flex:1;width:100%;max-width:1100px;margin:0 auto;padding:10px 16px 36px;overflow-x:clip}   /* slide transitions must never widen the page: phones would zoom out to fit */
 .screen{animation:arrive .4s ease-out both} @keyframes arrive{from{opacity:0;transform:translateY(6px)}}
+.screen.in-fwd{animation:slideF .32s cubic-bezier(.2,.7,.2,1) both} .screen.in-back{animation:slideB .32s cubic-bezier(.2,.7,.2,1) both}
+@keyframes slideF{from{opacity:0;transform:translateX(34px)}} @keyframes slideB{from{opacity:0;transform:translateX(-34px)}}
+.sbar{position:sticky;bottom:0;z-index:4;margin:22px -16px 0;padding:12px 16px calc(14px + env(safe-area-inset-bottom));background:var(--paper);border-top:1px solid var(--rule);display:grid;gap:12px}
+.scene{margin-top:14px;background:var(--paper-2);position:relative} .scene canvas{display:block;width:100%;height:178px}
+.permnote{margin-top:10px;font-size:15px;color:var(--ink-2);padding-left:14px;border-left:3px solid var(--cobalt)}
+.two{display:flex;flex-wrap:wrap;gap:10px 22px;justify-content:center}
 
 /* ---------- buttons ---------- */
 .btn{display:flex;align-items:center;justify-content:center;gap:12px;min-height:58px;padding:0 22px;width:100%;font:600 21px/1 "Caption";font-stretch:88%;letter-spacing:.01em;transition:background .15s,color .15s}
@@ -65,6 +73,8 @@ body.is-live{height:100dvh;overflow:hidden} body.is-live .top{display:none} body
 .clock{font:700 34px/1 "Plate";font-variant-numeric:tabular-nums}
 .stage{grid-area:stage;position:relative;margin:0 10px;min-height:0;background:var(--paper-3);overflow:hidden}
 .stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
+.stage video{filter:grayscale(1) sepia(.18) contrast(1.06) brightness(1.04)}   /* the feed as a photographic print, so the cobalt reads like ink on it */
+.stage::after{content:"";position:absolute;inset:0;background:var(--paper);opacity:0;pointer-events:none} .stage.flash::after{animation:shutter .24s ease-out} @keyframes shutter{from{opacity:.85}to{opacity:0}}
 .stage.mirror video,.stage.mirror #overlay{transform:scaleX(-1)}
 .stag{position:absolute;left:10px;top:10px;background:var(--paper);box-shadow:inset 0 0 0 1px var(--ink);color:var(--cobalt);padding:5px 10px;font-size:15px;display:flex;align-items:center;gap:8px;max-width:calc(100% - 20px)}
 .stag i{width:10px;height:10px;background:var(--cobalt);flex:none} .stag.hollow i{background:none;box-shadow:inset 0 0 0 2px var(--cobalt)}
@@ -86,12 +96,15 @@ body.is-live{height:100dvh;overflow:hidden} body.is-live .top{display:none} body
 
 /* ---------- analysing / error ---------- */
 .center{min-height:56dvh;max-width:520px;margin:0 auto;display:flex;flex-direction:column;justify-content:center;gap:14px}
+.devwrap{background:var(--paper-2);border:2px solid var(--ink)} .devwrap canvas{display:block;width:100%;height:min(46dvh,340px)}
 .sweep{height:6px;background:var(--paper-3);position:relative;overflow:hidden;margin-top:8px} .sweep::after{content:"";position:absolute;inset:0 auto 0 0;width:34%;background:var(--cobalt);animation:slide 1.3s ease-in-out infinite}
 @keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(300%)}}
 
 /* ---------- patient result ---------- */
 .result{max-width:640px;margin:0 auto}
+.rplate{margin-top:14px;border:2px solid var(--ink);background:var(--paper-2);cursor:pointer} .rplate canvas{display:block;width:100%;height:min(27dvh,330px);min-height:150px}
 .said{margin-top:18px;font:400 clamp(21px,5.7vw,30px)/1.45 "Text";padding:4px 0 4px 18px;border-left:6px solid var(--cobalt)}
+@media (max-width:620px){#h-result{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap} .said{font-size:clamp(19px,5.4vw,28px);line-height:1.4;margin-top:12px} .rplate{margin-top:6px}}
 .basis{margin-top:12px;font-size:15px;color:var(--ink-2)}
 
 /* ---------- clinician workspace ---------- */
@@ -103,6 +116,7 @@ body.is-live{height:100dvh;overflow:hidden} body.is-live .top{display:none} body
 .sents{grid-area:sents;display:grid;gap:14px;align-content:start}
 .sent{text-align:left;font:400 22px/1.46 "Text";padding:4px 0 4px 18px;border-left:5px solid transparent;display:block;width:100%;transition:border-color .2s}
 .sent:hover{border-left-color:var(--ghost)} .sent.on{border-left-color:var(--cobalt)}
+.vsw{position:absolute;right:10px;top:8px;display:flex;gap:14px;z-index:2;background:var(--paper-2);padding:2px 6px;font-size:15px} .vsw button{padding:2px 0 4px;border-bottom:3px solid transparent;color:var(--ink-2);font-weight:560} .vsw button[aria-pressed="true"]{border-color:var(--cobalt);color:var(--cobalt)}
 .cplate{grid-area:plate;position:relative;border:2px solid var(--ink);background:var(--paper-2);height:min(62dvh,520px);min-height:260px}
 .cplate canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .cwave{grid-area:wave;display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:14px;align-items:stretch}
@@ -118,7 +132,7 @@ body.is-live{height:100dvh;overflow:hidden} body.is-live .top{display:none} body
 .ev{font-size:15px;line-height:1.55;max-width:46em} .ev b{font-weight:600}
 .fine{font-size:13.5px;color:var(--ink-2)}
 @media (min-width:980px){
-  main.wide{max-width:1440px;padding:6px 36px 22px}
+  main.wide{max-width:1440px;padding:6px 36px 22px} body.wide-page .top{max-width:1440px;padding-left:36px;padding-right:36px}
   .sheet{grid-template-columns:minmax(0,.86fr) minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto;column-gap:44px;grid-template-areas:"head head" "plate sents" "plate det" "wave wave";min-height:calc(100dvh - 96px);padding-bottom:0}
   .cplate{height:auto;min-height:340px} .shead h1{font-size:36px}
 }
@@ -129,7 +143,7 @@ body.is-live{height:100dvh;overflow:hidden} body.is-live .top{display:none} body
 <a class="skip" href="#main">Skip to content</a>
 <header class="top" id="topbar">
   <button class="back" id="btnBack" aria-label="Back" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"><path d="M15 4L7 12l8 8"/></svg></button>
-  <div class="brand">Rehab Form</div><div class="stepcap cap" id="stepCap"></div>
+  <div class="brand">Rehab Form</div><div class="stepcap cap" id="stepCap"><span class="pips" id="pips" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span id="stepText"></span></div>
 </header>
 
 <main id="main">
@@ -147,17 +161,12 @@ body.is-live{height:100dvh;overflow:hidden} body.is-live .top{display:none} body
     <div class="gate screen" id="gate">
       <h1 id="h-session" tabindex="-1">Set up your camera</h1>
       <p class="lead" id="sessLead"></p>
-      <svg class="illo" viewBox="0 0 320 140" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" aria-hidden="true">
-        <rect x="14" y="40" width="34" height="62"/><circle cx="31" cy="92" r="2.5" fill="currentColor"/>
-        <path d="M62 71h118" stroke="#1B3FD1" stroke-dasharray="2 9"/><text x="120" y="60" text-anchor="middle" font-size="14" fill="currentColor" stroke="none" font-family="Caption" style="font-stretch:76%;font-weight:560">2–3 m</text>
-        <circle cx="238" cy="38" r="12"/><path d="M238 52v38M206 66l32-8 32 8M224 126l14-36 14 36"/>
-        <path d="M14 126h292" stroke="#1B3FD1" stroke-width="1.5"/>
-      </svg>
+      <div class="scene"><canvas id="demo" role="img" aria-label="The exercise shown as a moving figure, with where to put the phone"></canvas></div>
       <ul class="tips"><li>Rest your phone or laptop at chest height.</li><li>Stand 2–3 m back, facing the camera.</li><li>Keep your head to your hips in view.</li></ul>
       <p class="note-err" id="camErr" role="alert" hidden></p>
-      <div class="stack"><button class="btn solid" id="btnCam">Start camera</button>
-        <label class="link" for="file" style="justify-self:start;cursor:pointer">Use a video file instead</label><input id="file" type="file" accept="video/*" class="sr-only"></div>
       <p class="privacy">Your video stays on this device. Only body landmarks are sent for checking.</p>
+      <div class="sbar"><p class="permnote" id="permNote" hidden style="margin:0">Camera already allowed. It stays off until you press the button.</p><button class="btn solid" id="btnCam">Open camera</button>
+        <label class="link" for="file" style="justify-self:center;cursor:pointer">Use a video file instead</label><input id="file" type="file" accept="video/*" class="sr-only"></div>
     </div>
 
     <div class="live" id="live" hidden>
@@ -176,7 +185,7 @@ body.is-live{height:100dvh;overflow:hidden} body.is-live .top{display:none} body
   <!-- analysing and errors -->
   <section class="screen" id="s-analysing" aria-labelledby="h-analysing" hidden>
     <div class="center" id="anaBusy">
-      <h1 id="h-analysing" tabindex="-1">Checking your set</h1><div class="sweep" aria-hidden="true"></div>
+      <div class="devwrap"><canvas id="devPlate" aria-hidden="true"></canvas></div><h1 id="h-analysing" tabindex="-1" style="font-size:30px">Checking your set</h1>
       <p class="lead" style="margin-top:6px">Only body landmarks are sent. Your video never leaves this device.</p>
     </div>
     <div class="center" id="anaErr" hidden>
@@ -188,10 +197,11 @@ body.is-live{height:100dvh;overflow:hidden} body.is-live .top{display:none} body
   <!-- patient result -->
   <section class="screen result" id="s-result" aria-labelledby="h-result" hidden>
     <h1 id="h-result" tabindex="-1">Your feedback</h1>
+    <div class="rplate" id="rplate" title="Tap to pause or play"><canvas id="pplate" aria-hidden="true"></canvas></div>
     <p class="said" id="patientText"></p>
     <p class="basis">Feedback is based only on what was measured.</p>
-    <div class="stack"><button class="btn solid" id="btnAgain">Record again</button><button class="btn line" id="btnOther">Choose another exercise</button>
-      <button class="link" id="btnClin" style="justify-self:start">Open clinician view</button></div>
+    <div class="sbar"><button class="btn solid" id="btnAgain">Record again</button>
+      <div class="two"><button class="link" id="btnOther">Another exercise</button><button class="link" id="btnClin">Clinician view</button></div></div>
   </section>
 
   <!-- clinician workspace -->
@@ -200,7 +210,7 @@ body.is-live{height:100dvh;overflow:hidden} body.is-live .top{display:none} body
       <header class="shead"><div><h1 id="h-clin" tabindex="-1">Clinician view</h1><p id="clinMeta"></p></div>
         <div class="strict" id="seg" role="radiogroup" aria-label="Strictness"></div></header>
       <div class="sents" id="sents"></div>
-      <section class="cplate" id="cplate"><canvas id="replay" aria-label="Skeleton replay of the selected repetition with three ghost poses"></canvas></section>
+      <section class="cplate" id="cplate"><div class="vsw" id="vsw" role="group" aria-label="Replay layout"><button data-v="stack" aria-pressed="true">Stack</button><button data-v="seq" aria-pressed="false">Sequence</button></div><canvas id="replay" aria-label="Skeleton replay of the selected repetition with three ghost poses"></canvas></section>
       <section class="cwave" id="cwave"><div class="transport"><button id="rpPlay">Play</button><output id="rpOut"></output></div>
         <svg id="wave" role="slider" aria-label="Scrub through the selected repetition" tabindex="0"></svg></section>
       <div class="det" id="det"></div>
@@ -228,7 +238,7 @@ const dpr = () => Math.min(window.devicePixelRatio || 1, 2.5);
 const state = {landmarker: null, model: "loading", modelSrc: null, modelErr: "", source: null, stream: null, running: false, loopId: 0,
   detErr: 0, recording: false, phase: "gate", frames: [], lastTs: -1, armMax: {l: 0, r: 0}, rep: null, vis: 0, found: false, hipsOk: true,
   exercise: "ELK", strictness: "standard", health: null, result: null, screen: "choose", lastUi: 0, recStart: 0, sim: null, rp: null, sel: null,
-  k: 1, tag: {bend: "–", arm: "–", armL: "–", armR: "–"}, mirrorOn: true};
+  trail: [], lastSnap: 0, lastFrameMs: -1, view: "stack", k: 1, tag: {bend: "–", arm: "–", armL: "–", armR: "–"}, mirrorOn: true};
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
 const announce = t => { $("announce").textContent = t; };
@@ -349,18 +359,22 @@ const SCREENS = ["choose", "session", "analysing", "result", "clinician"];
 function go(name) {
   for (const s of SCREENS) $("s-" + s).hidden = s !== name;
   const was = state.screen; state.screen = name;
-  if (name !== "session") { stopCamera(); setLive(false); }
+  if (name !== "session") { stopCamera(); setLive(false); stopDemo(); }
+  if (name !== "choose") stopRows(); else if (state.health) startRows();
+  if (name !== "analysing") stopDev(); if (name !== "result") stopPlate();
   if (name !== "clinician" && state.rp) state.rp.playing = false;
-  $("main").classList.toggle("wide", name === "clinician");
+  $("main").classList.toggle("wide", name === "clinician"); document.body.classList.toggle("wide-page", name === "clinician");
   updateHeader();
-  const sec = $("s-" + name); sec.style.animation = "none"; void sec.offsetWidth; sec.style.animation = "";
+  const sec = $("s-" + name), ord = {choose: 0, session: 1, analysing: 2, result: 3, clinician: 4};
+  sec.classList.remove("in-fwd", "in-back"); sec.classList.add(ord[name] >= ord[was] ? "in-fwd" : "in-back"); sec.style.animation = "none"; void sec.offsetWidth; sec.style.animation = "";
+  if (name === "result") startPlate();
   scrollTo(0, 0);
   const h = sec.querySelector("h1:not([hidden])"); if (h && was !== name && name !== "session") h.focus({preventScroll: true});
 }
 function setLive(on) { document.body.classList.toggle("is-live", on); }
 function updateHeader() {
   const step = {choose: 1, session: state.phase === "recording" || state.phase === "countdown" ? 3 : 2, analysing: 3, result: 4, clinician: 4}[state.screen];
-  $("stepCap").textContent = `Step ${step} of 4`;
+  $("stepText").textContent = `Step ${step} of 4`; [...$("pips").children].forEach((e, i) => e.classList.toggle("on", i < step));
   $("btnBack").hidden = state.screen === "choose" || state.screen === "analysing";
 }
 const back = () => {
@@ -419,12 +433,18 @@ function tick() {
   if (canvas.width !== w || canvas.height !== h) { canvas.width = marks.width = w; canvas.height = marks.height = h; measureStage(w, h); }
   ctx.clearRect(0, 0, w, h);
   let m = null, P = null;
-  if (lm) { P = fixSides(toPixels(lm, w, h)); m = measures(P); repUpdate(m); state.lastLean = m.lean; drawSkeleton(ctx, mirrorP(P, w), state.k); }
+  if (lm) {
+    P = fixSides(toPixels(lm, w, h)); m = measures(P); repUpdate(m); state.lastLean = m.lean;
+    if (now - state.lastSnap > 380) { state.trail.push({P, t: now}); state.lastSnap = now; if (state.trail.length > 6) state.trail.shift(); }   // stroboscopic exposures, short on purpose so they never clutter
+    for (const e of state.trail) { const a = 1 - (now - e.t) / 2400; if (a > 0 && e.P !== P) drawLines(ctx, e.P, state.k, 0.42 * a); }
+    drawSkeleton(ctx, mirrorP(P, w), state.k);
+  }
   state.vis = state.vis * 0.8 + (lm ? 0.2 : 0);
   if (!state.found && state.vis > 0.75) state.found = true; else if (state.found && state.vis < 0.4) state.found = false;
   state.hipsOk = !lm || (lm[23].y < 0.97 && lm[24].y < 0.97);
   if (state.recording) {
-    state.frames.push({t_ms: +mediaMs.toFixed(1), landmarks: lm ? lm.map(p => [+p.x.toFixed(5), +p.y.toFixed(5), +p.z.toFixed(5)]) : null});
+    const tms = +mediaMs.toFixed(1);                                                  // the server needs strictly increasing times; a repeated video frame would be a 400
+    if (tms > state.lastFrameMs) { state.lastFrameMs = tms; state.frames.push({t_ms: tms, landmarks: lm ? lm.map(p => [+p.x.toFixed(5), +p.y.toFixed(5), +p.z.toFixed(5)]) : null}); }
     if (state.source !== "file" && now - state.recStart > MAX_SET_S * 1000) stopRecording();
   }
   refreshUi(false, m, now);
@@ -486,7 +506,7 @@ async function startCamera() {
       NotReadableError: "Another app seems to be using the camera. Close it and try again.",
       OverconstrainedError: "The camera couldn't start with these settings. Try again or choose a video file."}[e.name];
     camError(t || `The camera couldn't start (${e.message || e.name}). You can choose a video file instead.`);
-  } finally { b.disabled = false; b.textContent = "Start camera"; }
+  } finally { b.disabled = false; b.textContent = "Open camera"; }
 }
 function loadFile(file) {
   camError(null); stopCamera();
@@ -501,7 +521,7 @@ function stopCamera() {
   state.found = false; state.vis = 0; clearInterval(state.cd);
 }
 function enterLive() {
-  $("gate").hidden = true; $("live").hidden = false; setLive(true); state.phase = "setup"; state.found = false; state.vis = 0; lastReps = -1;
+  stopDemo(); state.trail = []; $("gate").hidden = true; $("live").hidden = false; setLive(true); state.phase = "setup"; state.found = false; state.vis = 0; lastReps = -1;
   $("liveEx").firstChild.textContent = EXNAME(state.exercise); $("clock").textContent = "0:00"; $("veil").hidden = true;
   state.running = true; state.loopId++; refreshUi(true); schedule();
   announce("Camera on. Step into view.");
@@ -513,7 +533,8 @@ function trackingFailed() {
 function enterGate() {
   $("gate").hidden = false; $("live").hidden = true; setLive(false); state.phase = "gate"; camError(null);
   $("h-session").textContent = "Set up your camera"; $("sessLead").textContent = `${EXNAME(state.exercise)}. One short set of 3 to 5 repetitions.`;
-  updateHeader();
+  updateHeader(); startDemo();
+  $("permNote").hidden = true; navigator.permissions?.query({name: "camera"}).then(p => { $("permNote").hidden = p.state !== "granted" || state.phase !== "gate"; }).catch(() => {});
 }
 const EXNAME = k => cap((state.health?.exercises[k] || k).split(":")[0]);
 
@@ -537,9 +558,9 @@ function startCountdown() {
   }, 1000);
 }
 function beginRecording() {
-  state.frames = []; state.recording = true; state.recStart = performance.now(); state.armMax = {l: 0, r: 0}; lastReps = -1; tally(0);
+  state.frames = []; state.lastFrameMs = -1; state.recording = true; state.recStart = performance.now(); state.armMax = {l: 0, r: 0}; lastReps = -1; tally(0);
   state.rep = {count: 0, lo: Infinity, hi: -Infinity, up: false, leans: []}; state.tag = {bend: "–", arm: "–", armL: "–", armR: "–"};
-  state.phase = "recording"; refreshUi(true); announce("Recording");
+  state.phase = "recording"; refreshUi(true); announce("Recording"); shutter();
   if (state.source === "file") { video.onended = () => state.recording && stopRecording(); video.currentTime = 0; video.play(); }
 }
 function cancelRecording() {
@@ -548,7 +569,7 @@ function cancelRecording() {
 }
 async function stopRecording() {
   if (!state.recording) return;
-  state.recording = false; if (state.source === "file") video.pause();
+  state.recording = false; if (state.source === "file") video.pause(); shutter();
   const fr = state.frames, secs = fr.length > 1 ? (fr.at(-1).t_ms - fr[0].t_ms) / 1000 : 0;
   state.phase = "setup"; state.rep = null;
   if (secs < MIN_SET_S || fr.length < MIN_SET_S * 5) return showError("That set was too short. Record at least a few seconds: 3 to 5 full repetitions works best.", false);
@@ -572,7 +593,7 @@ function showError(text, canRetry) {
 }
 async function submit(frames, dims, strictness, fresh) {
   state.pending = {frames, dims, strictness};
-  go("analysing"); $("anaBusy").hidden = false; $("anaErr").hidden = true; $("h-analysing").focus({preventScroll: true});
+  go("analysing"); $("anaBusy").hidden = false; $("anaErr").hidden = true; $("h-analysing").focus({preventScroll: true}); startDev(frames, dims);
   try {
     const j = await callServer(frames, dims, strictness);
     state.result = {...j, frames, width: dims.width, height: dims.height}; state.strictness = strictness;
@@ -653,7 +674,8 @@ function buildReplay(f, autoplay) {
 const valAt = (rp, t) => { const v = rp.tl[Math.round(t * 10)]; return v === undefined ? null : v; };
 function drawReplay() {
   const rp = state.rp; if (!rp) return; const f = rp.f;
-  const [W, H, g] = fit($("replay")), [x0, y0, x1, y1] = rp.bbox, bw = Math.max(x1 - x0, rp.torso * 0.8), bh = Math.max(y1 - y0, rp.torso), pad = 0.14;
+  const [W, H, g] = fit($("replay")); if (state.view === "seq") { drawSeq(g, W, H, rp); drawWave(); return; }
+  const [x0, y0, x1, y1] = rp.bbox, bw = Math.max(x1 - x0, rp.torso * 0.8), bh = Math.max(y1 - y0, rp.torso), pad = 0.14;
   const s = Math.min(W * (1 - 2 * pad) / bw, H * (1 - pad - 0.1) / bh), ox = W / 2 - (x0 + x1) / 2 * s, oy = H * 0.9 - y1 * s;     // keep one fixed frame, bottom-anchored
   const T = p => [p[0] * s + ox, p[1] * s + oy];
   g.fillStyle = C.p2; g.fillRect(0, 0, W, H);
@@ -734,12 +756,175 @@ $("seg").addEventListener("click", async e => {
   } catch (err) { seg.classList.remove("busy"); announce(err.message); $("clinMeta").textContent = err.message + " Your recording is kept; try again."; }
 });
 
+// ---------------------------------------------------------------- strobe trail, exercise demo and plates (all drawn from landmarks held in memory)
+const ease = x => x * x * (3 - 2 * x);
+function drawLines(g, P, k, alpha) {
+  g.save(); g.globalAlpha = alpha; g.lineCap = "round"; g.lineJoin = "round"; g.strokeStyle = C.cobalt; g.lineWidth = 2.6 / k;
+  for (const [a, b] of EDGES) { if (!ok(P[a]) || !ok(P[b])) continue; g.beginPath(); g.moveTo(P[a][0], P[a][1]); g.lineTo(P[b][0], P[b][1]); g.stroke(); }
+  g.restore();
+}
+function shutter() { if (reduced.matches) return; const st = $("stage"); st.classList.remove("flash"); void st.offsetWidth; st.classList.add("flash"); navigator.vibrate?.(18); }
+
+function lerpO(a, b, f) {
+  const d = {a: 0, sw: 0.27, len: 1, armL: [0, 0], armR: [0, 0]}, o = {};
+  for (const key of Object.keys(d)) { const va = a[key] ?? d[key], vb = b[key] ?? d[key]; o[key] = Array.isArray(va) ? va.map((x, j) => x + (vb[j] - x) * f) : va + (vb - va) * f; }
+  return o;
+}
+function motionAt(ex, t) {
+  const fr = MOTION[ex] || MOTION.ELK, period = 4.6, p = (((t % period) + period) % period) / period, k = p < 0.5 ? ease(p * 2) : ease(2 - 2 * p), x = k * (fr.length - 1), i = Math.min(fr.length - 2, Math.floor(x));
+  return fig(lerpO(fr[i], fr[i + 1], x - i));
+}
+const DEMO = {on: false, raf: 0, t0: 0};
+function drawDemo(t) {
+  const c = $("demo"); if (!c || c.offsetParent === null) return; const [W, H, g] = fit(c), s = H * 0.25, fx = W * 0.66, hy = H * 0.72, at = p => [fx + p[0] * s, hy + p[1] * s];
+  g.fillStyle = C.p2; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "rgba(31,29,26,.17)"; g.lineWidth = 1; for (let y = hy % (s * 0.5); y < H; y += s * 0.5) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+  g.strokeStyle = "rgba(31,29,26,.5)"; g.lineWidth = 1.5; g.beginPath(); g.moveTo(0, hy); g.lineTo(W, hy); g.stroke();
+  const sh = hy - s * 1.0, px = W * 0.12; g.strokeStyle = C.ink; g.lineWidth = 2.5; g.strokeRect(px - 11, sh - 24, 22, 44); g.fillStyle = C.ink; g.beginPath(); g.arc(px, sh + 13, 2, 0, 7); g.fill();
+  g.save(); g.setLineDash([2, 8]); g.lineCap = "round"; g.strokeStyle = C.cobalt; g.lineWidth = 3; g.beginPath(); g.moveTo(px + 20, sh); g.lineTo(fx - s * 0.95, sh); g.stroke(); g.restore();
+  g.fillStyle = C.ink2; g.font = "560 14px Caption"; g.fontStretch = "condensed"; g.textAlign = "center"; g.fillText("2–3 m", (px + 20 + fx - s * 0.95) / 2, sh - 9); g.textAlign = "left";
+  const drawFig = (P, col, w, a) => { g.save(); g.globalAlpha = a; g.strokeStyle = col; g.lineWidth = w; g.lineCap = "round"; g.lineJoin = "round"; for (const [p, q] of FIG_EDGES) { const A = at(P[p]), B = at(P[q]); g.beginPath(); g.moveTo(A[0], A[1]); g.lineTo(B[0], B[1]); g.stroke(); } const h = at(P.head); g.beginPath(); g.arc(h[0], h[1], 0.17 * s, 0, 7); g.stroke(); g.restore(); };
+  if (!reduced.matches) [1.3, 0.9, 0.45].forEach((d, i) => drawFig(motionAt(state.exercise, t - d), C.cobalt, 2.2, 0.14 + i * 0.12));
+  drawFig(motionAt(state.exercise, reduced.matches ? 2.3 : t), C.ink, 3, 1);
+}
+function startDemo() { stopDemo(); DEMO.on = true; DEMO.t0 = performance.now(); const step = () => { if (!DEMO.on) return; drawDemo((performance.now() - DEMO.t0) / 1000); if (!reduced.matches) DEMO.raf = requestAnimationFrame(step); }; requestAnimationFrame(step); }
+function stopDemo() { DEMO.on = false; cancelAnimationFrame(DEMO.raf); }
+
+function framesSeg(frames, W, H, a = -1, b = 1e9) {
+  const t0 = frames[0].t_ms, out = [];
+  for (const x of frames) { if (!x.landmarks) continue; const t = (x.t_ms - t0) / 1000; if (t < a || t > b) continue; out.push({t, P: fixSides(x.landmarks.map(p => [p[0] * W, p[1] * H, 0]))}); }
+  return out;
+}
+function viewOf(seg) {
+  const pts = seg.flatMap(q => [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26].map(i => q.P[i]).filter(ok)); if (!pts.length) return null;
+  const s0 = seg[0].P, torso = Math.hypot((s0[11][0] + s0[12][0]) / 2 - (s0[23][0] + s0[24][0]) / 2, (s0[11][1] + s0[12][1]) / 2 - (s0[23][1] + s0[24][1]) / 2) || 100;
+  return {x0: Math.min(...pts.map(p => p[0])), x1: Math.max(...pts.map(p => p[0])), y0: Math.min(...pts.map(p => p[1])), y1: Math.max(...pts.map(p => p[1])), torso, hip0: (s0[23][1] + s0[24][1]) / 2};
+}
+function fitV(v, W, H, padX, top, bottom) { const bw = Math.max(v.x1 - v.x0, v.torso * 0.8), bh = Math.max(v.y1 - v.y0, v.torso), s = Math.min(W * (1 - 2 * padX) / bw, H * (1 - top - bottom) / bh); return {s, ox: W / 2 - (v.x0 + v.x1) / 2 * s, oy: H * (1 - bottom) - v.y1 * s}; }
+function plateBg(g, W, H, v, f) {
+  g.fillStyle = C.p2; g.fillRect(0, 0, W, H); const base = v.hip0 * f.s + f.oy, step = v.torso * f.s * 0.5;
+  g.strokeStyle = "rgba(31,29,26,.17)"; g.lineWidth = 1; for (let y = base % step; y < H; y += step) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+  g.strokeStyle = "rgba(31,29,26,.5)"; g.lineWidth = 1.5; g.beginPath(); g.moveTo(0, base); g.lineTo(W, base); g.stroke();
+}
+function poseOn(g, P, f, o) {
+  const T = p => [p[0] * f.s + f.ox, p[1] * f.s + f.oy]; g.save(); g.globalAlpha = o.a ?? 1; g.lineCap = "round"; g.lineJoin = "round"; g.strokeStyle = o.col; g.lineWidth = o.w;
+  for (const [a, b] of EDGES) { if (!ok(P[a]) || !ok(P[b])) continue; const A = T(P[a]), B = T(P[b]); g.beginPath(); g.moveTo(A[0], A[1]); g.lineTo(B[0], B[1]); g.stroke(); }
+  if (ok(P[0])) { const h = T(P[0]), r = Math.hypot(P[11][0] - P[12][0], P[11][1] - P[12][1]) * 0.42 * f.s; g.beginPath(); g.arc(h[0], h[1], r, 0, 7); g.stroke(); }
+  if (o.joints) { g.fillStyle = o.joints; for (const i of [11, 12, 13, 14, 15, 16, 23, 24]) if (ok(P[i])) { const q = T(P[i]); g.beginPath(); g.arc(q[0], q[1], o.w * 0.9, 0, 7); g.fill(); } }
+  g.restore();
+}
+const frameAt = (rp, pos) => { let q = rp.seg[0]; for (const e of rp.seg) { if (e.t - rp.seg[0].t <= pos) q = e; else break; } return q; };
+
+// the exercise rows breathe: each figure performs its exercise and leaves the same short strobe trail as the live view
+const ROWS = {on: false, raf: 0, t0: 0};
+function drawRow(c, ex, t) {
+  const [W, H, g] = fit(c), s = H * 0.3, hy = H * 0.74, fx = W * 0.5, at = p => [fx + p[0] * s, hy + p[1] * s];
+  g.fillStyle = C.p2; g.fillRect(0, 0, W, H); g.strokeStyle = "rgba(31,29,26,.18)"; g.lineWidth = 1; for (let y = hy % (s * 0.5); y < H; y += s * 0.5) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+  g.strokeStyle = "rgba(31,29,26,.5)"; g.lineWidth = 1.5; g.beginPath(); g.moveTo(0, hy); g.lineTo(W, hy); g.stroke();
+  const one = (P, col, w, a) => { g.save(); g.globalAlpha = a; g.strokeStyle = col; g.lineWidth = w; g.lineCap = "round"; g.lineJoin = "round"; for (const [p, q] of FIG_EDGES) { const A = at(P[p]), B = at(P[q]); g.beginPath(); g.moveTo(A[0], A[1]); g.lineTo(B[0], B[1]); g.stroke(); } const h = at(P.head); g.beginPath(); g.arc(h[0], h[1], 0.17 * s, 0, 7); g.stroke(); g.restore(); };
+  [1.2, 0.8, 0.4].forEach((d, i) => one(motionAt(ex, t - d), C.cobalt, 2, 0.14 + i * 0.12)); one(motionAt(ex, t), C.ink, 2.8, 1);
+}
+function startRows() {
+  stopRows(); if (reduced.matches) return; ROWS.on = true; ROWS.t0 = performance.now(); let last = 0;
+  const step = now => { if (!ROWS.on) return; if (now - last > 40) { last = now; const t = (now - ROWS.t0) / 1000; document.querySelectorAll(".exrow").forEach((b, i) => { const cv = b.querySelector("canvas"); if (cv) drawRow(cv, b.dataset.ex, t + i * 0.9); }); } ROWS.raf = requestAnimationFrame(step); };
+  ROWS.raf = requestAnimationFrame(step);
+}
+function stopRows() { ROWS.on = false; cancelAnimationFrame(ROWS.raf); }
+
+// while the server checks the set, the plate "develops": exposures of the person's own set appear one by one
+const DEV = {on: false, raf: 0, t0: 0, seg: [], v: null};
+function startDev(frames, dims) {
+  stopDev(); DEV.seg = framesSeg(frames, dims.width, dims.height); DEV.v = DEV.seg.length ? viewOf(DEV.seg) : null; DEV.t0 = performance.now(); DEV.on = true;
+  const step = () => { if (!DEV.on) return; drawDev(); DEV.raf = requestAnimationFrame(step); }; requestAnimationFrame(step);
+}
+function stopDev() { DEV.on = false; cancelAnimationFrame(DEV.raf); }
+function drawDev() {
+  const c = $("devPlate"); if (!c || c.offsetParent === null) return; const [W, H, g] = fit(c), seg = DEV.seg, n = 8;
+  if (!DEV.v) { g.fillStyle = C.p2; g.fillRect(0, 0, W, H); return; }
+  const f = fitV(DEV.v, W, H, 0.16, 0.06, 0.1); plateBg(g, W, H, DEV.v, f);
+  const cyc = n * 0.42 + 1.4, el = ((performance.now() - DEV.t0) / 1000) % cyc, shown = reduced.matches ? n : Math.min(n, el / 0.42);
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, Math.min(1, shown - i)); if (a <= 0) continue; const q = seg[Math.round(i * (seg.length - 1) / (n - 1))], last = i === n - 1;
+    poseOn(g, q.P, f, {col: last ? C.ink : C.cobalt, w: last ? 3.2 : 2.2, a: (last ? 1 : 0.18 + 0.5 * i / n) * a, joints: last ? C.cobalt : null});
+  }
+}
+
+// the patient's result is a plate of their own set; the sentence below it is the server's text, untouched
+const PP = {on: false, raf: 0, t0: 0, d: null, paused: false, pausedAt: 0};
+function gaugeFor(f, text) {          // only numbers that already appear in the sentence are drawn
+  if (!f || f.status !== "error" || !f.quotable || !Number.isFinite(f.value) || !Number.isFinite(f.typical)) return null;
+  const a = fval(f, f.value), b = fval(f, f.typical); return a && b && text.includes(a) && text.includes(b) ? {value: f.value, typical: f.typical, a, b} : null;
+}
+function startPlate() {
+  stopPlate(); const R = state.result; if (!R) return;
+  const f = R.findings.find(x => x.status === "error" && hasWin(x)) || R.findings.find(hasWin);
+  let seg = f ? framesSeg(R.frames, R.width, R.height, f.start_s, f.end_s) : []; if (seg.length < 3) seg = framesSeg(R.frames, R.width, R.height);
+  PP.d = {seg, v: seg.length ? viewOf(seg) : null, notSeen: R.status === "not_seen", n: 5, gauge: gaugeFor(f, R.feedback.text),
+    praise: R.status === "ok" && R.findings.length > 0 && R.findings.every(x => x.status !== "error") && R.findings.some(x => x.status === "ok")};
+  PP.t0 = performance.now(); PP.paused = false; PP.on = true;
+  const step = () => { if (!PP.on) return; drawPatientPlate(); PP.raf = requestAnimationFrame(step); }; requestAnimationFrame(step);
+}
+function stopPlate() { PP.on = false; cancelAnimationFrame(PP.raf); }
+$("rplate").addEventListener("click", () => { if (!PP.on) return; PP.paused = !PP.paused; if (PP.paused) PP.pausedAt = performance.now(); else PP.t0 += performance.now() - PP.pausedAt; });
+function drawGauge(g, W, H, gz, t) {
+  const sc = niceScale(Math.max(gz.value, gz.typical) * 1.15), pad = W * 0.1, y = H * 0.9, X = v => pad + v / sc.max * (W - 2 * pad), p = reduced.matches ? 1 : Math.max(0, Math.min(1, t / 0.9));
+  g.save(); g.strokeStyle = C.ink; g.lineWidth = 2; g.beginPath(); g.moveTo(pad, y); g.lineTo(W - pad, y); g.stroke();
+  for (let i = 0; i <= sc.n; i++) { const x = X(i * sc.step); g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 6); g.stroke(); }
+  const left = gz.value < gz.typical, vx = X(gz.value * ease(p)), tx = X(gz.typical);
+  g.fillStyle = C.paper; g.strokeStyle = C.ink; g.lineWidth = 2; g.beginPath(); g.moveTo(tx, y); g.lineTo(tx - 8, y - 14); g.lineTo(tx + 8, y - 14); g.closePath(); g.fill(); g.stroke();
+  g.fillStyle = C.cobalt; g.beginPath(); g.moveTo(vx, y); g.lineTo(vx - 8, y - 14); g.lineTo(vx + 8, y - 14); g.closePath(); g.fill();
+  g.font = "700 20px Plate"; g.textBaseline = "alphabetic"; g.fillStyle = C.cobalt; g.textAlign = left ? "right" : "left"; g.fillText(gz.a, vx + (left ? -10 : 10), y - 6);
+  g.fillStyle = C.ink; g.font = "560 15px Caption"; g.fontStretch = "condensed"; g.textAlign = left ? "left" : "right"; g.fillText(`${gz.b} typical`, tx + (left ? 12 : -12), y - 5);
+  g.restore();
+}
+function drawPatientPlate() {
+  const c = $("pplate"); if (!c || c.offsetParent === null || !PP.d || PP.paused) return;
+  const d = PP.d, [W, H, g] = fit(c), el = (performance.now() - PP.t0) / 1000, n = d.n;
+  if (d.notSeen || !d.v) {            // nobody on the plate: an empty frame and a dashed outline
+    const s = H * 0.3, v = {x0: 0, y0: 0, x1: 1, y1: 1, torso: s, hip0: H * 0.7}, f = {s: 1, ox: 0, oy: 0}; plateBg(g, W, H, v, f);
+    const P = fig(MOTION.ELK[0]); g.save(); g.setLineDash([6, 7]); g.strokeStyle = C.cobalt; g.lineWidth = 2.6; g.lineCap = "round"; g.globalAlpha = 0.7;
+    for (const [a, b] of FIG_EDGES) { g.beginPath(); g.moveTo(W / 2 + P[a][0] * s, H * 0.7 + P[a][1] * s); g.lineTo(W / 2 + P[b][0] * s, H * 0.7 + P[b][1] * s); g.stroke(); }
+    g.beginPath(); g.arc(W / 2 + P.head[0] * s, H * 0.7 + P.head[1] * s, 0.17 * s, 0, 7); g.stroke(); g.restore(); return;
+  }
+  const f = fitV(d.v, W, H, 0.16, 0.06, d.gauge ? 0.3 : 0.1); plateBg(g, W, H, d.v, f);
+  const rev = reduced.matches ? n : Math.min(n, el / 0.34), done = n * 0.34 + 0.3;
+  for (let i = 0; i < n; i++) { const a = Math.max(0, Math.min(1, rev - i)); if (a <= 0) continue; poseOn(g, d.seg[Math.round(i * (d.seg.length - 1) / (n - 1))].P, f, {col: C.cobalt, w: 2.3, a: (0.16 + 0.5 * i / (n - 1)) * a}); }
+  if (reduced.matches || el > done) {
+    const dur = (d.seg.at(-1).t - d.seg[0].t) || 1, pos = reduced.matches ? dur * 0.5 : ((el - done) * 0.6) % (dur + 0.8);
+    poseOn(g, frameAt({seg: d.seg}, pos).P, f, {col: C.ink, w: 3.6, joints: C.cobalt});
+  }
+  if (d.gauge) drawGauge(g, W, H, d.gauge, el - done);
+  if (d.praise) {
+    const p = reduced.matches ? 1 : Math.max(0, Math.min(1, (el - 0.3) / 0.6)), x0 = W - 70, y0 = 46, A = [x0, y0], B = [x0 + 16, y0 + 16], D = [x0 + 46, y0 - 18], s1 = Math.min(1, p / 0.4), s2 = Math.max(0, (p - 0.4) / 0.6);
+    g.save(); g.strokeStyle = C.cobalt; g.lineWidth = 6; g.lineCap = "round"; g.lineJoin = "round"; g.beginPath(); g.moveTo(A[0], A[1]); g.lineTo(A[0] + (B[0] - A[0]) * s1, A[1] + (B[1] - A[1]) * s1);
+    if (s2 > 0) g.lineTo(B[0] + (D[0] - B[0]) * s2, B[1] + (D[1] - B[1]) * s2); g.stroke(); g.restore();
+  }
+}
+
+// clinician: Sequence lays the repetition out as a numbered contact sheet (Muybridge); Stack superimposes it (Marey)
+function drawSeq(g, W, H, rp) {
+  const N = 6, cols = W > H * 1.15 ? 3 : 2, rows = N / cols, cw = W / cols, ch = H / rows, v = {x0: rp.bbox[0], y0: rp.bbox[1], x1: rp.bbox[2], y1: rp.bbox[3], torso: rp.torso, hip0: rp.hip0};
+  let near = 0, nd = 1e9; for (let i = 0; i < N; i++) { const d = Math.abs(rp.dur * i / (N - 1) - rp.pos); if (d < nd) { nd = d; near = i; } }
+  g.fillStyle = C.p2; g.fillRect(0, 0, W, H);
+  for (let i = 0; i < N; i++) {
+    const cx = (i % cols) * cw, cy = Math.floor(i / cols) * ch, q = frameAt(rp, rp.dur * i / (N - 1)); g.save(); g.beginPath(); g.rect(cx, cy, cw, ch); g.clip(); g.translate(cx, cy);
+    const f = fitV(v, cw, ch, 0.12, 0.2, 0.08); plateBg(g, cw, ch, v, f); poseOn(g, q.P, f, {col: C.ink, w: 3.2, joints: C.cobalt});
+    const fs = Math.round(Math.min(cw, ch) * 0.09 + 10); g.fillStyle = C.cobalt; g.font = `700 ${fs}px Plate`; g.fillText(String(i + 1), 9, fs + 5);
+    g.fillStyle = C.ink2; g.font = "560 12.5px Caption"; g.fontStretch = "condensed"; g.textAlign = "right"; g.fillText(`${q.t.toFixed(1)} s`, cw - 8, ch - 8); g.restore();
+    g.strokeStyle = i === near ? C.cobalt : C.ink; g.lineWidth = i === near ? 3.5 : 1; g.strokeRect(cx + 1, cy + 1, cw - 2, ch - 2);
+  }
+}
+$("vsw").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; state.view = b.dataset.v; [...$("vsw").children].forEach(x => x.setAttribute("aria-pressed", String(x === b))); if (state.rp) drawReplay(); });
+$("replay").addEventListener("click", e => {
+  const rp = state.rp; if (!rp || state.view !== "seq") return; const r = $("replay").getBoundingClientRect(), cols = r.width > r.height * 1.15 ? 3 : 2, rows = 6 / cols;
+  const i = Math.floor((e.clientY - r.top) / (r.height / rows)) * cols + Math.floor((e.clientX - r.left) / (r.width / cols)); rp.pos = rp.dur * Math.max(0, Math.min(5, i)) / 5; rp.playing = false; $("rpPlay").textContent = "Play"; drawReplay();
+});
+
 // ---------------------------------------------------------------- wiring
 function chooseExercise(k) {
-  state.exercise = k; enterGate(); go("session"); updateHeader();
-  navigator.permissions?.query({name: "camera"}).then(p => { if (p.state === "granted" && state.screen === "session" && state.phase === "gate") startCamera(); }).catch(() => {});
+  state.exercise = k; enterGate(); go("session"); updateHeader();     // step 2 always waits for the person: it shows how to stand and what the exercise looks like
 }
-function recordAgain() { enterGate(); go("session"); startCamera(); }
+function recordAgain() { enterGate(); go("session"); }
 $("exList").addEventListener("click", e => { const b = e.target.closest("[data-ex]"); if (b) chooseExercise(b.dataset.ex); });
 $("btnCam").onclick = startCamera;
 $("file").onchange = e => { if (e.target.files[0]) loadFile(e.target.files[0]); e.target.value = ""; };
@@ -759,13 +944,13 @@ async function init() {
       const [name, ...rest] = v.split(":"), has = state.health.validated_checks[k]?.length;
       return `<li><button class="exrow" data-ex="${k}"><canvas aria-hidden="true"></canvas><span style="margin:0"><b>${esc(cap(name))}</b><span>${esc(cap(rest.join(":").trim()))}</span>${has ? "" : "<em>No automatic checks yet</em>"}</span></button></li>`;
     }).join("");
-    document.querySelectorAll(".exrow").forEach(b => drawMini(b.querySelector("canvas"), b.dataset.ex));
+    document.querySelectorAll(".exrow").forEach(b => drawMini(b.querySelector("canvas"), b.dataset.ex)); startRows();
   } catch (e) {
     $("chooseErr").hidden = false; $("chooseErr").innerHTML = `The app server isn't reachable. Start it with <code>python app/server.py</code>, then reload. (${esc(e.message)})`;
   }
   updateHeader();
 }
-window.__rehab = {state, submit, go, trackingFailed, enterLive, enterGate, renderResult, renderClinician, chooseExercise};   // test hooks
+window.__rehab = {state, PP, DEV, DEMO, ROWS, submit, go, trackingFailed, enterLive, enterGate, renderResult, renderClinician, chooseExercise};   // test hooks
 init();
 </script>
 </body>
