@@ -352,15 +352,16 @@ def patient_findings(findings: list[Finding]) -> list[Finding]:
 def write_feedback(findings: list[Finding], exercise: str, llm: LLMClient | None = None,
                    prompt_version: int = 2) -> Feedback:
     """LLM draft -> claim check -> template if the draft fails (or no LLM)."""
+    everything = findings                      # the template must see borderline findings to tell "nothing to say" from "no checks exist"
     findings = patient_findings(findings)
     if llm is None or not findings:
-        text = template_feedback(findings)
+        text = template_feedback(everything)
         return Feedback(text, "template_only", None, None, check(text, findings))
     draft = llm(grounded_prompt(findings, exercise, version=prompt_version))
     rep = check(draft, findings)
     if rep.ok and rep.n_claims > 0:
         return Feedback(draft, "llm", draft, rep, rep)
-    text = template_feedback(findings)
+    text = template_feedback(everything)
     return Feedback(text, "template", draft, rep, check(text, findings))
 
 

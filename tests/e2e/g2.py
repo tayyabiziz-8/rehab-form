@@ -47,6 +47,7 @@ click(c, "#vsw button[data-v=stack]"); time.sleep(0.4); check("Stack: back to th
 click(c, "#btnBack"); time.sleep(0.5)
 c.ev("__submit([16,16,16])"); wait(c, "__rehab.state.screen==='result'", 20); time.sleep(1.5)
 check("borderline: standard does not correct", S_(c)["findings"][0][1] == "borderline")
+r = S_(c); check("borderline: the patient hears neutral encouragement, not 'no checks exist'", r["text"] == "Keep it up!", r["text"])
 click(c, "#btnClin"); time.sleep(1.2)
 check("borderline: clinician sees 'just past the threshold' note", c.ev("document.getElementById('det').textContent.includes('Just past the threshold')"))
 def strict(name):

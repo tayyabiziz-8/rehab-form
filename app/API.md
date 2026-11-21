@@ -90,7 +90,7 @@ Limits: at least 2 s of recording, body ≤ 25 MB (a 2-minute set at 30 fps is a
 | Field | How the app uses it |
 |---|---|
 | `status` | `ok`; `not_seen` (person visible in < half the frames → show `feedback.text`, which asks for a re-recording); `no_checks` (exercise has no validated checks yet). |
-| `feedback.text` | **The only text the patient sees.** Show it as is: no added numbers, body parts or advice. |
+| `feedback.text` | **The only text the patient sees.** Show it as is: no added numbers, body parts or advice. When the only finding is `borderline` the text is the neutral "Keep it up!" (the clinician view still shows the finding); "No automatic form checks are validated for this exercise yet." appears only when the exercise has no validated checks. |
 | `feedback.sentences[].cites` | Finding ids each sentence relies on. Clinician view: tap a sentence → highlight its finding and window. |
 | `feedback.source` | `template_only`, `template` (LLM draft rejected → template used), `llm` (draft passed the checker), `not_seen`. |
 | `findings[].status` | `error` (patient is told), `borderline` (**clinician view only**, never patient), `ok` (may be praised). |

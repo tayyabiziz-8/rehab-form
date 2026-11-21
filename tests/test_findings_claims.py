@@ -87,6 +87,21 @@ def test_window_is_the_worst_repetition_and_borderline_is_not_corrected():
     assert "[F" not in text and "bend" not in text.lower()          # nothing corrective for the patient
 
 
+def test_borderline_only_set_is_not_told_that_no_checks_exist():
+    """22 Nov: a set whose only finding was borderline got "No automatic form checks are validated for this
+    exercise yet." because write_feedback filtered the borderline finding out before the template could tell
+    "nothing to say" from "no checks exist". The patient gets neutral encouragement; the clinician still sees it."""
+    from rehabform.feedback import write_feedback
+    with tempfile.TemporaryDirectory() as d:
+        b = engine(Path(d), margin=5.0).run(elk_sequence(12, T=300, reps=[1.0, 1.0, 0.4, 1.0, 1.0]), "ELK")
+    assert b[0].status == "borderline"
+    fb = write_feedback(b, "ELK")
+    assert fb.text == "Keep it up!", fb.text
+    assert "No automatic form checks" not in fb.text and fb.report.ok
+    none = write_feedback([], "RTK")                                 # an exercise with no validated checks keeps its own message
+    assert none.text == "No automatic form checks are validated for this exercise yet." and none.report.ok
+
+
 def test_weak_repetition_found_from_the_arm():
     """21 Nov my_elk2: two weak bends (~6 deg) and one good one (~25 deg); only the good one was found,
     because repetitions were cut from the bend itself. The raised arm marks every repetition."""
