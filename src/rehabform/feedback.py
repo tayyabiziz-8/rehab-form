@@ -338,6 +338,8 @@ class Feedback:
     report: CheckReport
 
 
+NOT_EXERCISE_TEXT = ("This does not look like the {name} exercise, so it was not checked. Please follow the "
+                     "demonstration and record again.")
 NOT_SEEN_TEXT = ("We could not see you clearly enough to check this exercise. Please record again with your "
                  "whole upper body and hips in view, facing the camera.")
 

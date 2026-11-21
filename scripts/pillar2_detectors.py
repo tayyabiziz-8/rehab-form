@@ -47,6 +47,10 @@ MIN_BALANCED = 0.75   # leave-one-subject-out balanced accuracy
 MIN_PEOPLE = 4        # different people with the error
 MAX_SENS_LOSS = 0.10     # borderline band may cost at most 10 points of sensitivity (vs annotator A, in-sample)
 MIN_BAND = 5             # ... and must hold at least 5 rated recordings to say anything
+# Exercise envelope: what a session must look like to be judged as this exercise at all. One-sided on purpose:
+# healthy people move MORE than Keraal's patients, so only movements that leave the exercise are excluded
+# (CTK = hands in front of the face; arms far overhead is a different exercise).
+ENVELOPE = {"CTK": [("arm_peak_mean", "max"), ("wrist_height_p95", "max")]}
 
 # Error meanings: Keraal's descriptions, matched to the 18 Nov signal ranking
 # (body part + which feature separates the error). 'reportable' = the feature
@@ -66,7 +70,8 @@ DETECTORS = [
     {"id": "ELK_body_not_tilted", "exercise": "ELK", "error": "Error2",
      "meaning": "body not tilted", "body_part": "Spine",
      "candidates": [("lean_range", "below", True, "deg trunk lean range"),
-                    ("lean_abs_p95", "below", True, "deg trunk lean from start")]},
+                    ("lean_abs_p95", "below", True, "deg trunk lean from start"),
+                    ("lean_abs_rep_min", "below", True, "deg trunk lean, smallest repetition")]},
     {"id": "RTK_arms_not_raised", "exercise": "RTK", "error": "Error1",
      "meaning": "arms not raised enough", "body_part": "BothArms",
      "candidates": [("arm_peak_mean", "below", True, "deg arm elevation"),
@@ -207,6 +212,7 @@ def main() -> None:
             continue
 
         best_for_config = None
+        cand = {}
         for feat, direction, reportable, unit in det["candidates"]:
             x = np.array([as_float(r[feat]) for r in rr])
             pred = np.zeros(len(rr), bool)
@@ -242,6 +248,8 @@ def main() -> None:
                             "n_error": int(is_pos.sum()), "n_correct": int(is_neg.sum()),
                             "people_error": len(set(people[is_pos])), "severity_ordered": mono,
                             "median_correct": vals[0], "median_small": vals[1], "median_large": vals[2]})
+            cand[feat] = {"pred": pred.copy(), "x": x, "direction": direction, "reportable": reportable,
+                          "bal": (sens + spec) / 2, "median_correct": vals[0], "unit": unit}
             score = (sens + spec) / 2 + (0.02 if reportable else 0.0)   # prefer a quotable measure on near-ties
             if best_for_config is None or score > best_for_config[0]:
                 best_for_config = (score, feat, direction, reportable, unit, t_all, sens, spec, k_ab, k_sa, k_sb, vals, mono)
@@ -249,6 +257,27 @@ def main() -> None:
             _, feat, direction, reportable, unit, t_all, sens, spec, k_ab, k_sa, k_sb, vals, mono = best_for_config
             # severity: between the Small and Large medians, only if the feature orders severity
             cut = round((vals[1] + vals[2]) / 2, 3) if mono else None
+            # A proxy (e.g. image elbow bend for "arms not raised") detects a correlate, not the error itself,
+            # and can misfire on other movements (21 Nov: arms overhead with bent elbows -> "raise your arms").
+            # Guard it with the best direct measure: no error when the direct measure is at or past what
+            # correct repetitions typically reach. The guarded detector is what the engine runs.
+            guard = None
+            if not reportable:
+                direct = [(c["bal"], f) for f, c in cand.items() if c["reportable"] and np.isfinite(c["median_correct"])]
+                if direct:
+                    gf = max(direct)[1]
+                    g = cand[gf]
+                    clearly_ok = (g["x"] >= g["median_correct"]) if g["direction"] == "below" \
+                        else (g["x"] <= g["median_correct"])
+                    clearly_ok &= np.isfinite(g["x"])
+                    pg = cand[feat]["pred"] & ~clearly_ok
+                    sens, spec = pg[is_pos].mean(), (~pg[is_neg]).mean()
+                    k_sa, k_sb = kappa(pg[both_rated], flag_A[both_rated]), kappa(pg[both_rated], flag_B[both_rated])
+                    guard = {"feature": gf, "direction": g["direction"], "ok_limit": round(float(g["median_correct"]), 3),
+                             "unit": g["unit"]}
+                    print(f"  guard: {feat} flags only while {gf} has not reached the typical correct value "
+                          f"{g['median_correct']:.2f} -> LOSO sens {sens:.0%} spec {spec:.0%} bal {(sens + spec) / 2:.0%} "
+                          f"| kappa sys-A {k_sa:.2f} sys-B {k_sb:.2f}")
             people_err = len(set(people[is_pos]))
             usable = bool((sens + spec) / 2 >= MIN_BALANCED and people_err >= MIN_PEOPLE)
             why = "ok" if usable else (f"only {people_err} people with this error" if people_err < MIN_PEOPLE
@@ -259,7 +288,7 @@ def main() -> None:
                 "usable": usable, "usable_reason": why,
                 "exercise": ex, "keraal_error": err, "meaning": det["meaning"], "body_part": det["body_part"],
                 "feature": feat, "direction": direction, "threshold": round(t_all, 3), "unit": unit,
-                "reportable": reportable,
+                "reportable": reportable, "guard": guard,
                 "typical_correct": round(float(vals[0]), 3) if np.isfinite(vals[0]) else None,
                 "severity_cut": cut,
                 "evidence": {"loso_sensitivity": round(sens, 3), "loso_specificity": round(spec, 3),
@@ -267,6 +296,21 @@ def main() -> None:
                              "kappa_system_B": round(k_sb, 3), "n_error": int(is_pos.sum()),
                              "n_correct": int(is_neg.sum()), "people_error": people_err},
             }
+
+    print("\n=== exercise envelopes (movements far outside every Keraal recording of the exercise are not judged)")
+    envelopes = {}
+    for ex, specs in ENVELOPE.items():
+        xs_ex = [r for r in rows if r["exercise"] == ex]
+        for feat, side in specs:
+            x = np.array([as_float(r[feat]) for r in xs_ex])
+            x = x[np.isfinite(x)]
+            if len(x) < 20:
+                continue
+            lo, hi = np.percentile(x, 1), np.percentile(x, 99)
+            pad = 0.10 * (hi - lo)
+            limit = hi + pad if side == "max" else lo - pad
+            envelopes.setdefault(ex, []).append({"feature": feat, "side": side, "limit": round(float(limit), 3)})
+            print(f"  {ex} {feat}: {side} {limit:.2f}  (Keraal p1 {lo:.2f}, p99 {hi:.2f}, n={len(x)})")
 
     print("\n=== borderline band (no patient correction just past the threshold)")
     for det_id, cfg in thresholds.items():
@@ -279,7 +323,7 @@ def main() -> None:
         w.writerows(results)
     Path(args.thresholds).parent.mkdir(parents=True, exist_ok=True)
     with open(args.thresholds, "w", encoding="utf-8") as f:
-        json.dump({"version": 1, "date": date.today().isoformat(),
+        json.dump({"version": 2, "date": date.today().isoformat(), "envelopes": envelopes,
                    "source": "Keraal 1A + 2A, annotator A error labels vs both-Correct; thresholds fitted on all "
                              "subjects, evidence from leave-one-subject-out",
                    "detectors": thresholds}, f, indent=2)

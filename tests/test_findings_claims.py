@@ -21,17 +21,21 @@ from rehabform.findings import Finding, FindingsEngine  # noqa: E402
 W, H = 480, 360
 
 
-def elk_sequence(lean_deg: float, T: int = 100, reps: list[float] | None = None) -> np.ndarray:
+def elk_sequence(lean_deg: float, T: int = 100, reps: list[float] | None = None,
+                 full_arm: bool = False) -> np.ndarray:
     """Person facing the camera, left arm goes overhead while the trunk leans by lean_deg.
-    With ``reps`` (one scale per repetition) the bend is repeated, each rep scaled."""
+    With ``reps`` (one scale per repetition) the bend is repeated, each rep scaled; with
+    ``full_arm`` the arm still goes fully up in every rep (only the trunk bend is reduced)."""
     bp = np.full((T, 33, 3), np.nan, np.float32)
     if reps:
         rest = 10                                              # 1 s still at the start
         per = (T - rest) // len(reps)
         s = np.concatenate([np.zeros(rest)] + [sc * np.sin(np.linspace(0, np.pi, per)) for sc in reps])
         s = np.concatenate([s, np.zeros(T - len(s))])
+        sa = np.concatenate([np.zeros(rest)] + [np.sin(np.linspace(0, np.pi, per)) for _ in reps])
+        sa = np.concatenate([sa, np.zeros(T - len(sa))]) if full_arm else s
     else:
-        s = np.sin(np.linspace(0, np.pi, T))
+        s = sa = np.sin(np.linspace(0, np.pi, T))
     for t in range(T):
         lean = np.radians(lean_deg * s[t])
         hip = np.array([240.0, 280.0])
@@ -39,7 +43,7 @@ def elk_sequence(lean_deg: float, T: int = 100, reps: list[float] | None = None)
         mid = hip + up
         bp[t, 23, :2], bp[t, 24, :2] = hip + [20, 0], hip - [20, 0]
         bp[t, 11, :2], bp[t, 12, :2] = mid + [30, 0], mid - [30, 0]
-        a = np.radians(170 * s[t])
+        a = np.radians(170 * sa[t])
         ls = bp[t, 11, :2]
         bp[t, 13, :2] = ls + 50 * np.array([np.sin(a), np.cos(a)])
         bp[t, 15, :2] = ls + 100 * np.array([np.sin(a), np.cos(a)])
@@ -81,6 +85,36 @@ def test_window_is_the_worst_repetition_and_borderline_is_not_corrected():
     assert b[0].status == "borderline"
     text = template_feedback(b)
     assert "[F" not in text and "bend" not in text.lower()          # nothing corrective for the patient
+
+
+def test_weak_repetition_found_from_the_arm():
+    """21 Nov my_elk2: two weak bends (~6 deg) and one good one (~25 deg); only the good one was found,
+    because repetitions were cut from the bend itself. The raised arm marks every repetition."""
+    with tempfile.TemporaryDirectory() as d:
+        f = engine(Path(d)).run(elk_sequence(25, T=300, reps=[0.25, 1.0, 0.25], full_arm=True), "ELK")[0]
+    assert len(f.reps) == 3
+    tops = [r["peak"] for r in f.reps]
+    assert tops[0] < 10 and tops[1] > 20 and tops[2] < 10, tops
+    assert f.window_source == "worst_rep" and f.start_s < 11            # a weak one, not the good middle one
+
+
+def test_proxy_guard_and_exercise_envelope():
+    """21 Nov: arms overhead with bent elbows made the CTK elbow-bend proxy say 'raise your arms higher'."""
+    with tempfile.TemporaryDirectory() as d:
+        cfg = {"envelopes": {"ELK": [{"feature": "lean_range", "side": "max", "limit": 20.0}]},
+               "detectors": {"ELK_body_not_tilted": {
+                   "exercise": "ELK", "keraal_error": "Error2", "meaning": "body not tilted", "body_part": "Spine",
+                   "feature": "lean_range", "direction": "below", "threshold": 15.0, "unit": "deg",
+                   "reportable": False, "typical_correct": 25.0, "severity_cut": None, "evidence": {},
+                   "guard": {"feature": "arm_peak_high", "direction": "below", "ok_limit": 100.0, "unit": "deg"}}}}
+        p = Path(d) / "thr.json"
+        p.write_text(json.dumps(cfg))
+        eng = FindingsEngine(p)
+        f = eng.run(elk_sequence(5), "ELK")              # small lean (proxy flags) but the arm goes to ~170 deg
+        assert f[0].status == "ok"                       # guard: direct measure already past typical correct
+        assert eng.conformity["ok"]
+        eng.run(elk_sequence(40), "ELK")                 # lean range far beyond anything seen for this exercise
+        assert not eng.conformity["ok"] and eng.conformity["outside"][0]["feature"] == "lean_range"
 
 
 def test_template_feedback_always_passes_the_checker():

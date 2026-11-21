@@ -188,6 +188,11 @@ def main() -> None:
     if not findings and engine.skipped:            # checks exist but the person was not seen well enough
         from rehabform.feedback import NOT_SEEN_TEXT
         fb.text, fb.source = NOT_SEEN_TEXT, "not_seen"
+    elif not engine.conformity["ok"]:              # a different movement: do not judge it as this exercise
+        from rehabform.feedback import NOT_EXERCISE_TEXT
+        fb.text = NOT_EXERCISE_TEXT.format(name=EXERCISES[args.exercise].split(":")[0])
+        fb.source = "not_this_exercise"
+        print(f"outside the exercise envelope: {engine.conformity['outside']}")
 
     # console summary
     dur = len(bp) / FPS
@@ -212,6 +217,14 @@ def main() -> None:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(sheet)
             print(f"contact sheet: {p}")
+    def rep_peaks(f) -> str:
+        # each repetition's top value: a recording-level number hides one weak repetition among good ones
+        tops = [r["peak"] for r in f.reps if r.get("peak") is not None]
+        if not tops:
+            return ""
+        d = 0 if f.unit == "°" else 2
+        return " (top of each: " + ", ".join(f"{t:.{d}f}" for t in tops) + (f.unit if f.unit == "°" else "") + ")"
+
     blocks = []
     for f in findings:
         x = ser.get(f.feature, np.full(len(bp), np.nan))
@@ -229,8 +242,16 @@ def main() -> None:
             f'<div class="card"><b>{f.id} · {html.escape(f.issue)}</b> — <span class="{f.status}">{f.status}'
             f'{" (" + f.severity + ")" if f.severity else ""}</span><br><span class="muted">{html.escape(f.measure_label)}'
             f': {html.escape(val)}; window {f.start_s}–{f.end_s} s ({f.window_source}); '
-            f'{len(f.reps)} repetitions.<br>{html.escape(evid)}</span>'
+            f'{len(f.reps)} repetitions{rep_peaks(f)}.<br>{html.escape(evid)}</span>'
             f'{svg_timeline(x, f.reps, win, f.measure_label + " over time (dashed = the repetition referred to)")}</div>')
+    chk = engine.conformity.get("checked", [])
+    envelope_html = ("" if not chk else
+        '<p class="muted"><b>' + ("Exercise check: inside" if engine.conformity["ok"] else "Not judged: outside") +
+        "</b> what Keraal recordings of this exercise look like: " +
+        html.escape("; ".join(f"{c['feature']} {c['value'] if c['value'] is not None else 'n/a'} "
+                              f"(limit {c['side']} {c['limit']:g})" for c in chk)) + "</p>")
+    for c in chk:
+        print(f"exercise check: {c['feature']} = {c['value']}  (limit {c['side']} {c['limit']})")
     first = next((f for f in findings if f.start_s is not None), None)
     img = key_frame(video, bp, (first.start_s + first.end_s) / 2, info) if first else None
     draft = ""
@@ -243,6 +264,7 @@ def main() -> None:
 <p class="muted">{html.escape(video.name)} · {dur:.1f} s · person found in {1 - info['missing_fraction']:.0%} of frames · analysed at {FPS:g} fps{' · mirrored input' if args.mirrored else ''}</p>
 <h2>What the patient sees</h2><div class="card patient">{html.escape(strip_tags(fb.text))}</div>
 <p class="muted">Source: {fb.source}. Every sentence is backed by a finding below; the claim checker rejects anything else.</p>{draft}
+{envelope_html}
 <h2>Clinician view</h2>{''.join(blocks) or '<p>No validated checks for this exercise yet.</p>'}
 {f'<h2>Key frame</h2><img src="{img}" alt="video frame with skeleton"><p class="muted">Orange = left side, blue = right side. If the colours are swapped, re-run with --mirrored.</p>' if img else ''}
 </body></html>"""

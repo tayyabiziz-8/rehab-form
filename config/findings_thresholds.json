@@ -1,6 +1,20 @@
 {
-  "version": 1,
+  "version": 2,
   "date": "2026-11-21",
+  "envelopes": {
+    "CTK": [
+      {
+        "feature": "arm_peak_mean",
+        "side": "max",
+        "limit": 321.769
+      },
+      {
+        "feature": "wrist_height_p95",
+        "side": "max",
+        "limit": 1.738
+      }
+    ]
+  },
   "source": "Keraal 1A + 2A, annotator A error labels vs both-Correct; thresholds fitted on all subjects, evidence from leave-one-subject-out",
   "detectors": {
     "CTK_arms_not_raised": {
@@ -15,6 +29,7 @@
       "threshold": 0.821,
       "unit": "shoulder widths above the shoulders",
       "reportable": true,
+      "guard": null,
       "typical_correct": 0.991,
       "severity_cut": 0.458,
       "evidence": {
@@ -41,6 +56,7 @@
       "threshold": 2.171,
       "unit": "shoulder widths between wrists",
       "reportable": true,
+      "guard": null,
       "typical_correct": 2.622,
       "severity_cut": null,
       "evidence": {
@@ -67,6 +83,7 @@
       "threshold": 20.154,
       "unit": "deg trunk lean range",
       "reportable": true,
+      "guard": null,
       "typical_correct": 32.267,
       "severity_cut": 14.504,
       "evidence": {
@@ -93,6 +110,7 @@
       "threshold": 73.391,
       "unit": "deg arm elevation",
       "reportable": true,
+      "guard": null,
       "typical_correct": 93.616,
       "severity_cut": 69.802,
       "evidence": {
@@ -119,6 +137,7 @@
       "threshold": 4.05,
       "unit": "deg trunk lean range",
       "reportable": true,
+      "guard": null,
       "typical_correct": 5.515,
       "severity_cut": null,
       "evidence": {

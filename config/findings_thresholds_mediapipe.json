@@ -1,6 +1,20 @@
 {
-  "version": 1,
+  "version": 2,
   "date": "2026-11-21",
+  "envelopes": {
+    "CTK": [
+      {
+        "feature": "arm_peak_mean",
+        "side": "max",
+        "limit": 301.15
+      },
+      {
+        "feature": "wrist_height_p95",
+        "side": "max",
+        "limit": 1.884
+      }
+    ]
+  },
   "source": "Keraal 1A + 2A, annotator A error labels vs both-Correct; thresholds fitted on all subjects, evidence from leave-one-subject-out",
   "detectors": {
     "CTK_arms_not_raised": {
@@ -15,14 +29,20 @@
       "threshold": 88.537,
       "unit": "deg image-plane elbow bend (proxy)",
       "reportable": false,
+      "guard": {
+        "feature": "arm_peak_mean",
+        "direction": "below",
+        "ok_limit": 94.926,
+        "unit": "deg arm elevation"
+      },
       "typical_correct": 69.731,
       "severity_cut": 110.166,
       "evidence": {
-        "loso_sensitivity": 0.72,
-        "loso_specificity": 0.844,
+        "loso_sensitivity": 0.68,
+        "loso_specificity": 0.867,
         "kappa_clinicians": 0.606,
-        "kappa_system_A": 0.405,
-        "kappa_system_B": 0.496,
+        "kappa_system_A": 0.41,
+        "kappa_system_B": 0.509,
         "n_error": 25,
         "n_correct": 45,
         "people_error": 7
@@ -41,14 +61,20 @@
       "threshold": 137.5,
       "unit": "deg image-plane elbow bend (proxy)",
       "reportable": false,
+      "guard": {
+        "feature": "wrist_spread_p95",
+        "direction": "below",
+        "ok_limit": 2.696,
+        "unit": "shoulder widths between wrists"
+      },
       "typical_correct": 121.784,
       "severity_cut": null,
       "evidence": {
-        "loso_sensitivity": 0.769,
-        "loso_specificity": 0.667,
+        "loso_sensitivity": 0.0,
+        "loso_specificity": 0.844,
         "kappa_clinicians": 0.594,
-        "kappa_system_A": 0.141,
-        "kappa_system_B": 0.125,
+        "kappa_system_A": -0.207,
+        "kappa_system_B": -0.114,
         "n_error": 13,
         "n_correct": 45,
         "people_error": 2
@@ -67,6 +93,7 @@
       "threshold": 14.631,
       "unit": "deg trunk lean from start",
       "reportable": true,
+      "guard": null,
       "typical_correct": 21.781,
       "severity_cut": 7.404,
       "evidence": {
@@ -93,6 +120,7 @@
       "threshold": 0.117,
       "unit": "shoulder widths above the shoulders",
       "reportable": true,
+      "guard": null,
       "typical_correct": 0.374,
       "severity_cut": null,
       "evidence": {
@@ -119,6 +147,7 @@
       "threshold": 3.447,
       "unit": "deg trunk lean range",
       "reportable": true,
+      "guard": null,
       "typical_correct": 6.213,
       "severity_cut": 2.96,
       "evidence": {

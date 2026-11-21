@@ -23,6 +23,7 @@ from .angles import TrustTable, compute_all
 from .session_features import FPS, features, peak_window, segment_reps, series
 
 STRICTNESS = {"strict": 0.0, "standard": 1.0, "lenient": 2.0}   # x the fitted borderline band
+DRIVER_ARM_EXERCISES = ("CTK", "ELK")   # every repetition raises an arm; segment repetitions on that
 MIN_VALID_FRACTION = 0.5   # a check needs its measure in at least half of the frames
 DEFAULT_THRESHOLDS = Path(__file__).resolve().parents[2] / "config" / "findings_thresholds.json"
 # The app runs our own MediaPipe, and thresholds fitted on Keraal's shipped BlazePose do not transfer
@@ -34,6 +35,7 @@ APP_THRESHOLDS = MEDIAPIPE_THRESHOLDS if MEDIAPIPE_THRESHOLDS.exists() else DEFA
 FEATURE_INFO = {
     "lean_range": ("trunk_lean", "side-to-side range of your upper-body bend", "°", 0, True),
     "lean_abs_p95": ("trunk_lean", "sideways bend of your upper body", "°", 0, True),
+    "lean_abs_rep_min": ("trunk_lean", "sideways bend of your upper body in your smallest repetition", "°", 0, True),
     "rotation_range": ("trunk_rotation", "twist of your upper body", "°", 0, True),
     "arm_peak_mean": ("arm_elevation", "height of your arms", "°", 0, False),
     "arm_peak_high": ("arm_elevation", "height of your raised arm", "°", 0, False),
@@ -110,6 +112,8 @@ class FindingsEngine:
                  include_unvalidated: bool = False):
         cfg = json.loads(Path(thresholds_path).read_text(encoding="utf-8"))
         self.detectors = {k: v for k, v in cfg["detectors"].items() if include_unvalidated or v.get("usable", True)}
+        self.envelopes = cfg.get("envelopes", {})
+        self.conformity: dict = {"ok": True, "outside": []}
         self.trust = trust or TrustTable.load()
         self.skipped: list[str] = []
 
@@ -142,7 +146,21 @@ class FindingsEngine:
         feats = features(bp)
         ser = series(bp, m)
         out: list[Finding] = []
+        driver = None
+        if exercise in DRIVER_ARM_EXERCISES:          # the arm that goes up, whichever side it is
+            arms = np.stack([m["arm_elevation_l"], m["arm_elevation_r"]])
+            driver = np.where(np.isfinite(arms).any(axis=0), np.nanmax(np.where(np.isfinite(arms), arms, -np.inf),
+                                                                       axis=0), np.nan)
         self.skipped = []                    # checks for this exercise that could not be judged (too little data)
+        # Does the movement look like this exercise at all? (one-sided limits from every Keraal recording)
+        outside, checked = [], []
+        for env in self.envelopes.get(exercise, []):
+            v = feats.get(env["feature"], float("nan"))
+            item = {**env, "value": round(float(v), 3) if np.isfinite(v) else None}
+            checked.append(item)
+            if np.isfinite(v) and (v > env["limit"] if env["side"] == "max" else v < env["limit"]):
+                outside.append(item)
+        self.conformity = {"ok": not outside, "outside": outside, "checked": checked}
         for det_id, det in self.detectors.items():
             if det["exercise"] != exercise:
                 continue
@@ -157,6 +175,12 @@ class FindingsEngine:
             margin = (det.get("borderline_margin") or 0.0) * band_scale
             hard = det["threshold"] - margin if below else det["threshold"] + margin
             borderline = is_error and not (value < hard if below else value > hard)
+            # a proxy's flag is vetoed when the direct measure already reaches typical correct performance
+            g = det.get("guard")
+            if is_error and g:
+                gv = feats.get(g["feature"], float("nan"))
+                if np.isfinite(gv) and (gv >= g["ok_limit"] if g["direction"] == "below" else gv <= g["ok_limit"]):
+                    is_error, borderline = False, False
             _measure, label, unit, dec, _chg = FEATURE_INFO.get(feat, (None, feat, "", 1, False))
             quotable, mode, note = self._quotable(det, feat, exercise, value)
             severity = None
@@ -167,7 +191,11 @@ class FindingsEngine:
             if np.isfinite(x).mean() < MIN_VALID_FRACTION:
                 self.skipped.append(det_id)  # person not seen well enough to judge this check
                 continue
-            reps = segment_reps(x)
+            # Repetitions are found on a signal every repetition has whatever the error (the raised arm(s) in
+            # CTK / ELK), so a weak repetition among good ones is not lost; else on the checked measure itself.
+            reps = segment_reps(driver) if driver is not None else []
+            if len(reps) < 2:
+                reps = segment_reps(x)
             win, win_src = None, "peak"
             # each repetition's top value, from the raw measure (frames where the person was lost are NaN)
             rep_top = [_nanmax(x[a:b + 1]) for a, _p, b in reps]

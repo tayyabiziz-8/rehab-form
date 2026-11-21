@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from rehabform.feedback import (  # noqa: E402
-    EXERCISES, NOT_SEEN_TEXT, LLMClient, load_env_file, split_for_app, write_feedback,
+    EXERCISES, NOT_EXERCISE_TEXT, NOT_SEEN_TEXT, LLMClient, load_env_file, split_for_app, write_feedback,
 )
 from rehabform.findings import APP_THRESHOLDS, STRICTNESS, FindingsEngine  # noqa: E402
 from rehabform.keraal_groups import canonical_sides  # noqa: E402
@@ -123,6 +123,9 @@ class App:
         status = "ok"
         if not findings and self.engine.skipped:
             status, fb.text, fb.source = "not_seen", NOT_SEEN_TEXT, "not_seen"
+        elif not self.engine.conformity["ok"]:
+            status, fb.source = "not_this_exercise", "not_this_exercise"
+            fb.text = NOT_EXERCISE_TEXT.format(name=EXERCISES[ex].split(":")[0])
         elif not self.validated().get(ex):
             status = "no_checks"
         with warnings.catch_warnings():
@@ -141,6 +144,7 @@ class App:
                          if fb.draft_report is not None and fb.source != "llm" else []},
             "findings": [f.to_dict() for f in findings],
             "skipped_checks": list(self.engine.skipped),
+            "conformity": self.engine.conformity,
             "timelines": timelines,
         }
 

@@ -58,6 +58,7 @@ def series(bp: np.ndarray, measures: dict | None = None) -> dict[str, np.ndarray
         "elbow_reach_p95": m[f"elbow_flexion_{hi}"],
         "elbow_mean_p50": elbow_mean,
         "lean_abs_p95": np.abs(lean - lean0),
+        "lean_abs_rep_min": np.abs(lean - lean0),
         "lean_range": np.abs(lean - lean0),
         "rotation_range": np.abs(rot - np.nanmedian(rot)),
         "wrist_spread_p95": np.linalg.norm(P[:, L_WR] - P[:, R_WR], axis=1) / sw,
@@ -92,6 +93,16 @@ def features(bp: np.ndarray) -> dict:
     lean = m["trunk_lean"]
     lean0 = np.nanmedian(lean[: max(3, T // 10)])
     f["lean_abs_p95"] = _p(np.abs(lean - lean0), 95)
+    # weakest repetition (21 Nov): repetitions cut on the raised arm, each one's top bend; the recording
+    # p95 above is set by the best repetitions and hides one or two weak ones
+    arms = np.stack([m["arm_elevation_l"], m["arm_elevation_r"]])
+    drv = np.where(np.isfinite(arms).any(axis=0),
+                   np.nanmax(np.where(np.isfinite(arms), arms, -np.inf), axis=0), np.nan)
+    reps = segment_reps(drv)
+    bend = np.abs(lean - lean0)
+    tops = [np.nanmax(bend[a:b + 1]) for a, _p_, b in reps if np.isfinite(bend[a:b + 1]).any()]
+    f["arm_reps"] = len(reps)
+    f["lean_abs_rep_min"] = float(min(tops)) if len(tops) >= 2 else f["lean_abs_p95"]
     f["lean_range"] = _p(lean, 95) - _p(lean, 5)
     rot = m["trunk_rotation"]
     f["rotation_range"] = _p(rot, 95) - _p(rot, 5)
