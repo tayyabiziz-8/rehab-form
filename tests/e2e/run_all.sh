@@ -5,3 +5,4 @@ cd "$(dirname "$0")"
 pkill -f "[u]ser-data-dir=/tmp/cdp-" 2>/dev/null; true   # clear any browser left behind by an earlier crashed run
 [ -f cam/ELK.mjpeg ] || ./make_cams.sh
 for g in g1 g2 g3a g3b g3c g3d g4 g5 g6; do echo "=== $g"; python3 $g.py 2>&1 | grep -E "^(PASS|FAIL)|Traceback|Error"; done
+if ss -ltn | grep -q ':8443 '; then echo "=== g7 (LAN HTTPS)"; python3 g7.py 2>&1 | grep -E "^(PASS|FAIL)|Traceback|Error"; else echo "(g7 skipped: start tests/phone/tls_proxy.py to include the LAN HTTPS checks)"; fi

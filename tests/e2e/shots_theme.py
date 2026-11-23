@@ -1,5 +1,5 @@
 from lib import *
-OUT = "/home/zair/FYP/rehab-form/design/shots/final3" + ("-day" if os.environ.get("THEME")=="day" else ""); os.makedirs(OUT, exist_ok=True)
+OUT = os.path.join(os.path.dirname(S), "..", "design", "shots", "final3") + ("-day" if os.environ.get("THEME")=="day" else ""); os.makedirs(OUT, exist_ok=True)
 c = boot(video=None, fake_cam=False); inject_synth(c)
 if os.environ.get('THEME')=='day': c.ev("document.getElementById('themeBtn').click()")
 c.ev("""(()=>{const Y=window.SYNTH, idx={head:0,LS:11,RS:12,LE:13,RE:14,LW:15,RW:16,LH:23,RH:24,LK:25,RK:26,LA:27,RA:28}; Y.REPS.forEach((r,i)=>r.peak=[12,8,12][i]);

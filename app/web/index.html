@@ -164,6 +164,7 @@ body.is-live .ribbon{display:none}
 .stage .tint{position:absolute;inset:0;background:var(--tint);mix-blend-mode:color;opacity:var(--tint-op);pointer-events:none}
 .legend{position:absolute;left:12px;top:10px;z-index:2;display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink-2);background:color-mix(in srgb,var(--paper-2) 80%,transparent);padding:2px 8px} .legend i{display:block;width:78px;height:6px;background:var(--ramp)}
 .modelline.ready i{box-shadow:0 0 14px var(--accent)}
+.diag{position:absolute;left:8px;bottom:8px;margin:0;padding:3px 8px;background:var(--veil);color:var(--accent-text);font:500 12px/1.3 "Caption";z-index:3;white-space:pre} .diagbox{margin-top:14px;font-size:12px} .diagbox pre{margin:8px 0 0;padding:10px;background:var(--paper-2);color:var(--ink);overflow:auto;max-height:180px;white-space:pre-wrap;word-break:break-word}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -206,6 +207,7 @@ body.is-live .ribbon{display:none}
         <div class="ex" id="liveEx">Flank stretch<small>3 to 5 repetitions</small></div><div class="clock" id="clock">0:00</div></div>
       <div class="stage mirror" id="stage">
         <video id="video" playsinline muted></video><div class="tint"></div><canvas id="overlay"></canvas><canvas id="marks"></canvas>
+        <pre class="diag" id="diag" hidden></pre>
         <div class="stag cap" id="badge"><i></i><span>Looking for you…</span></div>
         <div class="veil" id="veil" hidden><div class="count" id="count" aria-live="assertive"><span class="e2">3</span><span class="e1">3</span><span class="n">3</span></div></div>
       </div>
@@ -232,6 +234,7 @@ body.is-live .ribbon{display:none}
     <div class="rplate" id="rplate" title="Tap to pause or play"><canvas id="pplate" aria-hidden="true"></canvas></div>
     <p class="said" id="patientText"></p>
     <p class="basis">Feedback is based only on what was measured.</p>
+    <div class="diagbox" id="diagBox" hidden><button class="link" id="diagCopy">Copy report</button><pre id="diagOut"></pre></div>
     <div class="sbar"><button class="btn solid" id="btnAgain">Record again</button>
       <div class="two"><button class="link" id="btnOther">Another exercise</button><button class="link" id="btnClin">Clinician view</button></div></div>
   </section>
@@ -280,7 +283,7 @@ const dpr = () => Math.min(window.devicePixelRatio || 1, 2.5);
 const state = {landmarker: null, model: "loading", modelSrc: null, modelErr: "", source: null, stream: null, running: false, loopId: 0,
   detErr: 0, recording: false, phase: "gate", frames: [], lastTs: -1, armMax: {l: 0, r: 0}, rep: null, vis: 0, found: false, hipsOk: true,
   exercise: "ELK", strictness: "standard", health: null, result: null, screen: "choose", lastUi: 0, recStart: 0, sim: null, rp: null, sel: null,
-  trail: [], wr: [], pulse: null, lastSnap: 0, lastFrameMs: -1, view: "stack", k: 1, tag: {bend: "–", arm: "–", armL: "–", armR: "–"}, mirrorOn: true};
+  diag: new URLSearchParams(location.search).has("diag"), delegate: null, det: {ms: 0, n: 0, t0: 0, fps: 0, sum: 0, cnt: 0}, lastDiag: 0, trail: [], wr: [], pulse: null, lastSnap: 0, lastFrameMs: -1, view: "stack", k: 1, tag: {bend: "–", arm: "–", armL: "–", armR: "–"}, mirrorOn: true};
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
 const announce = t => { $("announce").textContent = t; };
@@ -446,8 +449,8 @@ async function loadLandmarker() {
   state.modelSrc = local ? "local" : "remote";
   const opts = d => ({baseOptions: {modelAssetPath: local ? MODEL_LOCAL : MODEL_REMOTE, delegate: d}, runningMode: "VIDEO", numPoses: 1,
     minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5});
-  try { return await PoseLandmarker.createFromOptions(fileset, opts("GPU")); }
-  catch { return await PoseLandmarker.createFromOptions(fileset, opts("CPU")); }
+  try { const lm = await PoseLandmarker.createFromOptions(fileset, opts("GPU")); state.delegate = "GPU"; return lm; }
+  catch { state.delegate = "CPU"; return await PoseLandmarker.createFromOptions(fileset, opts("CPU")); }
 }
 async function initModel() {
   state.model = "loading"; refreshModel();
@@ -480,7 +483,7 @@ function tick() {
   else if (video.readyState >= 2 && state.landmarker) {
     w = video.videoWidth; h = video.videoHeight;
     const ts = Math.max(state.lastTs + 1, Math.round(now)); state.lastTs = ts;            // detector needs increasing time
-    try { const res = state.landmarker.detectForVideo(video, ts); lm = (res.landmarks && res.landmarks[0]) || null; state.detErr = 0; }
+    try { const t0 = performance.now(); const res = state.landmarker.detectForVideo(video, ts); lm = (res.landmarks && res.landmarks[0]) || null; state.detErr = 0; noteDetect(performance.now() - t0, now); }
     catch (e) { lm = null; if (++state.detErr >= 20) { console.error(e); return trackingFailed(); } }   // a throwing detector must not freeze the screen
     if (state.source === "file") mediaMs = video.currentTime * 1000;
   } else { schedule(); return; }
@@ -503,6 +506,7 @@ function tick() {
     if (state.source !== "file" && now - state.recStart > MAX_SET_S * 1000) stopRecording();
   }
   refreshUi(false, m, now);
+  if (state.diag && now - state.lastDiag > 400) { state.lastDiag = now; $("diag").textContent = diagLine(); }
   drawMarks(w, h, P);
   schedule();
 }
@@ -613,7 +617,7 @@ function startCountdown() {
   }, 1000);
 }
 function beginRecording() {
-  state.frames = []; state.lastFrameMs = -1; state.recording = true; state.recStart = performance.now(); state.armMax = {l: 0, r: 0}; lastReps = -1; tally(0);
+  state.frames = []; state.lastFrameMs = -1; state.det.sum = 0; state.det.cnt = 0; state.recording = true; state.recStart = performance.now(); state.armMax = {l: 0, r: 0}; lastReps = -1; tally(0);
   state.rep = {count: 0, lo: Infinity, hi: -Infinity, up: false, leans: []}; state.tag = {bend: "–", arm: "–", armL: "–", armR: "–"};
   state.phase = "recording"; refreshUi(true); announce("Recording"); shutter();
   if (state.source === "file") { video.onended = () => state.recording && stopRecording(); video.currentTime = 0; video.play(); }
@@ -661,7 +665,7 @@ function renderResult() {
   const j = state.result, fb = j.feedback;
   $("patientText").textContent = fb.text;                      // exactly the server's text, nothing added
   $("btnClin").hidden = !j.findings.length;
-  announce(fb.text);
+  showDiag(); announce(fb.text);
 }
 
 // ---------------------------------------------------------------- clinician workspace
@@ -999,6 +1003,23 @@ function setTheme(t, persist) {
 $("themeBtn").onclick = () => setTheme(document.documentElement.dataset.theme === "day" ? "night" : "day", true);
 setTheme(document.documentElement.dataset.theme || "night", false);
 
+// ---------------------------------------------------------------- diagnostics (only with ?diag=1): real frame rate and pose time on the device in your hand
+function noteDetect(ms, now) {
+  const d = state.det; d.ms = d.ms ? d.ms * 0.9 + ms * 0.1 : ms; d.n++;
+  if (state.recording) { d.sum += ms; d.cnt++; }
+  if (!d.t0) d.t0 = now; if (now - d.t0 >= 1000) { d.fps = d.n * 1000 / (now - d.t0); d.n = 0; d.t0 = now; }
+}
+function diagLine() { const d = state.det; return `${state.delegate || "?"}  ${canvas.width}×${canvas.height}  ${d.fps.toFixed(1)} fps  ${d.ms.toFixed(0)} ms/frame`; }
+function diagReport() {
+  const R = state.result, d = state.det, secs = R && R.frames.length > 1 ? (R.frames.at(-1).t_ms - R.frames[0].t_ms) / 1000 : 0;
+  return {when: new Date().toISOString(), userAgent: navigator.userAgent, secureContext: isSecureContext, screen: `${innerWidth}x${innerHeight} @${devicePixelRatio}x`, theme: document.documentElement.dataset.theme,
+    poseModel: {delegate: state.delegate, source: state.modelSrc}, video: `${R ? R.width : canvas.width}x${R ? R.height : canvas.height}`, exercise: state.exercise,
+    liveFps: +d.fps.toFixed(1), poseMsPerFrame: d.cnt ? +(d.sum / d.cnt).toFixed(1) : null, recordedFrames: R ? R.frames.length : 0, recordedSeconds: +secs.toFixed(1),
+    recordedFps: secs ? +(R.frames.length / secs).toFixed(1) : null, personFound: R ? R.person_found : null, serverStatus: R ? R.status : null, findings: R ? R.findings.map(f => `${f.id} ${f.status}`) : []};
+}
+function showDiag() { if (!state.diag) return; $("diagBox").hidden = false; $("diagOut").textContent = JSON.stringify(diagReport(), null, 1); }
+$("diagCopy").onclick = async () => { try { await navigator.clipboard.writeText($("diagOut").textContent); $("diagCopy").textContent = "Copied"; } catch (e) { $("diagCopy").textContent = "Select the text and copy it"; } setTimeout(() => $("diagCopy").textContent = "Copy report", 2500); };
+
 // ---------------------------------------------------------------- wiring
 function chooseExercise(k) {
   state.exercise = k; enterGate(); go("session"); updateHeader();     // step 2 always waits for the person: it shows how to stand and what the exercise looks like
@@ -1029,7 +1050,7 @@ async function init() {
   }
   updateHeader();
 }
-window.__rehab = {state, PP, DEV, DEMO, ROWS, submit, go, trackingFailed, enterLive, enterGate, renderResult, renderClinician, chooseExercise};   // test hooks
+window.__rehab = {state, diagReport, PP, DEV, DEMO, ROWS, submit, go, trackingFailed, enterLive, enterGate, renderResult, renderClinician, chooseExercise};   // test hooks
 init();
 </script>
 </body>

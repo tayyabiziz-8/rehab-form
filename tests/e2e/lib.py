@@ -16,8 +16,8 @@ def wait(c, js, t=30, step=0.35):
         except Exception: pass
         time.sleep(step)
     return False
-def boot(video=None, w=360, h=640, mobile=True, **kw):
-    c = Chrome(video=video, **kw); c.view(w, h, mobile=mobile); c.goto(URL, wait=2); wait(c, "__rehab.state.model!=='loading'", 45); return c
+def boot(video=None, w=360, h=640, mobile=True, url=None, **kw):
+    c = Chrome(video=video, **kw); c.view(w, h, mobile=mobile); c.goto(url or URL, wait=2); wait(c, "__rehab.state.model!=='loading'", 45); return c
 def pick(c, ex): c.ev(f"document.querySelector('[data-ex={ex}]').click()"); time.sleep(0.5)
 def click(c, sel):
     r = c.ev(f"(()=>{{const b=document.querySelector({json.dumps(sel)}).getBoundingClientRect(); return [b.left+b.width/2,b.top+b.height/2]}})()")

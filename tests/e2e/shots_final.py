@@ -1,5 +1,5 @@
 from lib import *
-OUT = "/home/zair/FYP/rehab-form/design/shots/final2"; os.makedirs(OUT, exist_ok=True)
+OUT = os.path.join(os.path.dirname(S), "..", "design", "shots", "final2"); os.makedirs(OUT, exist_ok=True)
 c = boot(video=None, fake_cam=False); inject_synth(c)
 c.ev("""(()=>{const Y=window.SYNTH, idx={head:0,LS:11,RS:12,LE:13,RE:14,LW:15,RW:16,LH:23,RH:24,LK:25,RK:26,LA:27,RA:28}; Y.REPS.forEach((r,i)=>r.peak=[12,8,12][i]);
  window.__mkSim=(w,h)=>{const s=h*0.8/3.6,cx=w*0.5,hy=h*0.1+2.05*s; return ()=>{const st=__rehab.state; const t=st.recording?((performance.now()-st.recStart)/1000)%12:0; const P=Y.pose(t); const lm=Array.from({length:33},()=>({x:.5,y:.2,z:0})); for(const [k,i] of Object.entries(idx)){const p=P[k]; lm[i]={x:(cx+p[0]*s)/w,y:(hy+p[1]*s)/h,z:0}} return lm}}})()""")
