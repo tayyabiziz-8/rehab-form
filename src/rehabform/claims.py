@@ -43,6 +43,9 @@ BODY_TERMS = {
     "foot": set(), "feet": set(), "ankle": set(), "ankles": set(),
 }
 SIDE_WORDS = ("left", "right")
+# 'right' meaning 'correct' (22 Nov, gpt-oss: "Great job reaching the right height with your arms" was rejected)
+_NOT_A_SIDE = re.compile(r"\b(?:the|a|just)\s+right\s+(?:height|way|position|amount|level|range|place|track|spot|pace|"
+                         r"direction|angle|depth|idea)\b|\bright\s+(?:away|now)\b|\ball right\b|\bthat'?s right\b")
 OUT_OF_SCOPE = ("pain", "hurt", "injur", "diagnos", "damage", "tear", "surgery", "medicat", "disease",
                 "arthritis", "inflamm")
 CORRECTIVE = ("try to", "should", "need to", "not enough", "too little", "too much", "further", "higher",
@@ -136,7 +139,7 @@ def check(text: str, findings: list[Finding]) -> CheckReport:
         body = _TAG.sub(" ", sent)
         low = body.lower()
         nums, terms = _numbers(body), _body_terms(body)
-        sides = [w for w in SIDE_WORDS if re.search(rf"\b{w}\b", low)]
+        sides = [w for w in SIDE_WORDS if re.search(rf"\b{w}\b", _NOT_A_SIDE.sub(" ", low))]
         reasons = []
         if any(w in low for w in OUT_OF_SCOPE):
             reasons.append("out_of_scope")

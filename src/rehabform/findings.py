@@ -193,9 +193,12 @@ class FindingsEngine:
                 continue
             # Repetitions are found on a signal every repetition has whatever the error (the raised arm(s) in
             # CTK / ELK), so a weak repetition among good ones is not lost; else on the checked measure itself.
+            # keep whichever finds more: the arm misses repetitions when both arms stay up between them
+            # (22 Nov my_elk: 2 from the arm vs 4 from the bend), the bend misses weak ones (my_elk2: 1 vs 3)
             reps = segment_reps(driver) if driver is not None else []
-            if len(reps) < 2:
-                reps = segment_reps(x)
+            own = segment_reps(x)
+            if len(own) > len(reps):
+                reps = own
             win, win_src = None, "peak"
             # each repetition's top value, from the raw measure (frames where the person was lost are NaN)
             rep_top = [_nanmax(x[a:b + 1]) for a, _p, b in reps]
