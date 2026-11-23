@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Studio Monitor (prototype)</title>
+<style>
+@font-face{font-family:"Sans";src:url(../fonts/UbuntuSans.ttf);font-weight:100 800;font-stretch:75% 100%}
+@font-face{font-family:"Mono";src:url(../fonts/UbuntuSansMono.ttf);font-weight:100 800}
+:root{--bg:#25221F;--panel:#2E2A27;--line:#443E38;--white:#EFE8DC;--mute:#A39A8D;--amber:#EDA33B;--screen:#1A1816}
+*{box-sizing:border-box} html,body{margin:0}
+body{background:var(--bg);color:var(--white);font:16px/1.45 "Sans",system-ui,sans-serif}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:3px solid var(--amber);outline-offset:3px}
+.mono{font-family:"Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+[hidden]{display:none!important}
+
+/* ============ phone: monitor ============ */
+body.rec{height:100dvh;display:grid;grid-template-rows:40px minmax(0,1fr) 138px;overflow:hidden}
+.status{display:flex;align-items:center;justify-content:space-between;padding:0 14px;font-size:14px;color:var(--mute)}
+.status b{color:var(--white);font-weight:560;display:flex;align-items:center;gap:8px} .status b i{width:9px;height:9px;border-radius:50%;background:var(--mute)}
+.status.live b i{background:var(--amber)} .status .mono{font-size:19px;color:var(--white);font-weight:500}
+.stage{position:relative;min-height:0;background:#35312D}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.dim{position:absolute;inset:0;background:rgba(37,34,31,.74);display:grid;place-items:center}
+.dial{position:relative;width:min(78vw,50dvh);aspect-ratio:1}
+.dial svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+.dial circle{fill:none;stroke-width:7} .dial .tr{stroke:var(--line)} .dial .sw{stroke:var(--amber);stroke-linecap:butt}
+.dial .num{position:absolute;inset:0;display:grid;place-items:center;font:500 min(46vw,30dvh)/1 "Mono"}
+.dial.tick .sw{animation:sweep 1s linear both}
+@keyframes sweep{from{stroke-dashoffset:0}to{stroke-dashoffset:var(--c)}}
+.dock{display:grid;grid-template-columns:1fr 112px 1fr;align-items:center;padding:6px 14px calc(8px + env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--line)}
+.rd{display:flex;flex-direction:column;gap:2px} .rd.r{align-items:flex-end;text-align:right}
+.rd b{font:500 38px/1 "Mono"} .rd span{font-size:13px;color:var(--mute)}
+.rcol{display:flex;flex-direction:column;align-items:center;gap:6px}
+.rb{width:88px;height:88px;border-radius:50%;border:3px solid var(--white);display:grid;place-items:center}
+.rb i{width:64px;height:64px;border-radius:50%;background:var(--amber);transition:width .2s,height .2s,border-radius .2s,background .2s}
+.rb.rec i{width:34px;height:34px;border-radius:8px}
+.rb.cd i{width:34px;height:34px;border-radius:50%;background:transparent;box-shadow:inset 0 0 0 3.5px var(--amber)}
+.rcol span{font-size:14px;font-weight:560}
+
+/* ============ desktop: review ============ */
+body.rev{height:100dvh;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}
+.top{display:flex;align-items:center;justify-content:space-between;padding:16px 28px 0}
+.top h1{margin:0;font:600 20px/1.2 "Sans"} .top p{margin:2px 0 0;font-size:14px;color:var(--mute)}
+.seg{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{padding:9px 18px;font-size:15px;font-weight:560;color:var(--mute);min-width:92px}
+.seg button+button{border-left:1px solid var(--line)} .seg button[aria-pressed="true"]{background:var(--amber);color:#25221F}
+.work{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:28px;padding:16px 28px 22px;min-height:0}
+.left{display:grid;grid-template-rows:minmax(0,1fr) auto;gap:14px;min-height:0}
+.mon{position:relative;background:var(--screen);border:1px solid var(--line);min-height:0}
+.mon canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.mon .tc{position:absolute;left:16px;top:12px;font:500 22px/1 "Mono";color:var(--white)} .mon .tc span{color:var(--mute)}
+.mon .ctl{position:absolute;left:12px;bottom:10px;display:flex;align-items:center;gap:14px;font-size:13px;color:var(--mute)}
+.pp{width:44px;height:44px;border:2px solid var(--white);border-radius:50%;display:grid;place-items:center} .pp i{display:block;width:14px;height:14px;background:var(--white);border-radius:2px}
+.pp.play i{width:0;height:0;background:none;border-radius:0;border-left:14px solid var(--white);border-top:8px solid transparent;border-bottom:8px solid transparent;margin-left:4px}
+.strip{display:flex;gap:6px;overflow:hidden;touch-action:none}
+.fr{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:5px;cursor:pointer}
+.fr canvas{width:100%;aspect-ratio:7/8;display:block;background:var(--screen);border:1px solid var(--line)}
+.fr span{font:500 13px/1 "Mono";color:var(--mute);text-align:center}
+.fr[aria-selected="true"] canvas{border-color:var(--amber);box-shadow:0 0 0 2px var(--amber)} .fr[aria-selected="true"] span{color:var(--amber)}
+.right{display:flex;flex-direction:column;gap:18px;min-height:0;border-left:1px solid var(--line);padding-left:28px}
+.sent{text-align:left;font:400 20px/1.5 "Sans";padding:12px 14px;background:var(--panel);outline:2px solid var(--amber);outline-offset:-2px}
+.nums{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.nums div b{display:block;font:500 62px/1 "Mono"} .nums div span{font-size:14px;color:var(--mute)} .nums .m b{color:var(--amber)}
+.trace{display:block;width:100%;height:112px}
+.trace text{font-family:"Sans";font-stretch:80%;font-weight:520;font-size:12px;fill:var(--mute)}
+.ev{margin:0;font-size:14px;line-height:1.55;color:var(--mute)} .ev b{color:var(--white);font-weight:560}
+@media (max-width:980px){body.rev{height:auto;overflow:auto}.work{grid-template-columns:1fr}.mon{height:62vw}.right{border:0;padding:0}.strip{overflow-x:auto}.fr{flex:0 0 74px}}
+@media (prefers-reduced-motion:reduce){.dial.tick .sw{animation:none!important}.rb i{transition:none}}
+</style>
+</head>
+<body>
+<!-- ================= phone monitor ================= -->
+<div id="vRec" hidden style="display:contents">
+  <header class="status" id="status"><b><i></i><span id="st">Recording</span></b><span class="mono" id="clock">00:00.0</span></header>
+  <main class="stage" id="stage"><canvas id="cam" aria-label="Camera view with tracking box, framing guides and a level bar"></canvas>
+    <div class="dim" id="dim" hidden><div class="dial" id="dial" aria-live="assertive"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="tr" cx="50" cy="50" r="46"/><circle class="sw" cx="50" cy="50" r="46" id="sw"/></svg><div class="num" id="num">3</div></div></div></main>
+  <footer class="dock"><div class="rd"><b class="mono" id="reps">0</b><span>reps</span></div>
+    <div class="rcol"><button class="rb" id="rb" aria-label="Record or stop"><i></i></button><span id="rbl">Stop</span></div>
+    <div class="rd r"><b class="mono" id="arm">0°</b><span>raised arm</span></div></footer>
+</div>
+
+<!-- ================= desktop review ================= -->
+<div id="vRev" hidden style="display:contents">
+  <header class="top"><div><h1>Flank stretch</h1><p>12.0 s, three repetitions, you were in view the whole time.</p></div>
+    <div class="seg" role="group" aria-label="Strictness"><button aria-pressed="false">Strict</button><button aria-pressed="true">Standard</button><button aria-pressed="false">Lenient</button></div></header>
+  <div class="work">
+    <section class="left"><div class="mon" id="mon"><canvas id="replay" aria-label="Skeleton replay of the selected repetition"></canvas>
+        <div class="tc mono" id="tc">06.0 <span>/ 12.0</span></div>
+        <div class="ctl"><button class="pp" id="pp" aria-label="Play or pause"><i></i></button><span>Space plays. Left and right keys step one frame.</span></div></div>
+      <div class="strip" id="strip" role="listbox" aria-label="Poses from the selected repetition"></div></section>
+    <aside class="right">
+      <button class="sent" id="sent" aria-pressed="true"></button>
+      <div class="nums"><div class="m"><b class="mono">11°</b><span>measured, sideways bend</span></div><div><b class="mono">22°</b><span>typical, correct repetitions</span></div></div>
+      <svg class="trace" id="trace" role="img" aria-label="Sideways bend over the whole set with the selected repetition marked"></svg>
+      <p class="ev"><b>Body not tilted. Error, small.</b> On people it was not tuned on, it catches 89% of clinician-marked errors and leaves 91% of correct sets alone. Agreement with clinician A is 0.51 and with B 0.54 (kappa); the two clinicians agree with each other at 0.43.</p>
+      <p class="ev" style="margin-top:auto">Measurements to support a clinician's judgement, not a diagnosis.</p>
+    </aside>
+  </div>
+</div>
+
+<script src="../shared/synth.js"></script>
+<script>
+const S = window.SYNTH, R = S.RESULT, F = R.findings[0];
+const K = {bg: "#25221F", panel: "#2E2A27", line: "#443E38", white: "#EFE8DC", mute: "#A39A8D", amber: "#EDA33B", screen: "#1A1816"};
+const view = S.param("view", "record"), dpr = Math.min(window.devicePixelRatio || 1, 3);
+const $ = id => document.getElementById(id);
+const fit = c => { const r = c.getBoundingClientRect(); c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr); const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); return [r.width, r.height, g]; };
+const tcode = t => `${String(Math.floor(t / 60)).padStart(2, "0")}:${(t % 60).toFixed(1).padStart(4, "0")}`;
+function trunk(g, P, v, w) { const a = S.at([(P.LH[0] + P.RH[0]) / 2, 0], v), b = S.at(P.Sc, v); g.save(); g.strokeStyle = K.amber; g.lineWidth = w; g.lineCap = "round"; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); g.restore(); }
+
+/* ---------------- phone monitor ---------------- */
+function initRec() {
+  document.body.className = "rec"; $("vRec").hidden = false; let state = S.param("state", "recording"), n = +S.param("n", 3), t = +S.param("t", 10.6);
+  const cam = $("cam");
+  function draw() {
+    const [W, H, g] = fit(cam); g.fillStyle = "#35312D"; g.fillRect(0, 0, W, H); g.fillStyle = "#2D2926"; g.fillRect(0, H * 0.84, W, H * 0.16);   // wall and floor of the synthetic room
+    const s = (H - 60) * 0.8 / 3.6, v = {cx: W * 0.5, hy: 14 + (H - 60) * 0.1 + 2.05 * s, s}, P = S.pose(state === "countdown" ? 0 : t);
+    g.strokeStyle = "rgba(239,232,220,.13)"; g.lineWidth = 1; for (const f of [1 / 3, 2 / 3]) { g.beginPath(); g.moveTo(W * f, 0); g.lineTo(W * f, H); g.moveTo(0, H * f); g.lineTo(W, H * f); g.stroke(); }
+    S.line(g, P, v, {color: "#6F675C", width: s * 0.075, fillHead: "#6F675C"});                 // the person as filmed
+    S.line(g, P, v, {color: "rgba(239,232,220,.92)", width: 2.5, joints: K.white}); trunk(g, P, v, 4.5);
+    // tracking box that follows the subject
+    const pts = ["head", "LW", "RW", "LA", "RA", "LS", "RS"].map(k => S.at(P[k], v)), pad = 14, x0 = Math.min(...pts.map(p => p[0])) - pad - 8, x1 = Math.max(...pts.map(p => p[0])) + pad + 8, y0 = Math.min(...pts.map(p => p[1])) - pad - s * 0.17, y1 = Math.max(...pts.map(p => p[1])) + pad, L = 18;
+    g.strokeStyle = K.amber; g.lineWidth = 2.5; for (const [x, y, dx, dy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]]) { g.beginPath(); g.moveTo(x, y + dy * L); g.lineTo(x, y); g.lineTo(x + dx * L, y); g.stroke(); }
+    // level bar along the foot of the frame: the live side bend as a bubble
+    const bw = W - 36, bx = 18, by = H - 26; g.fillStyle = "rgba(26,24,22,.78)"; g.fillRect(0, H - 52, W, 52);
+    g.strokeStyle = K.mute; g.lineWidth = 1.5; g.beginPath(); g.moveTo(bx, by); g.lineTo(bx + bw, by); g.stroke();
+    for (let d = -30; d <= 30; d += 10) { const x = bx + bw / 2 + d / 30 * bw / 2; g.beginPath(); g.moveTo(x, by - (d ? 5 : 9)); g.lineTo(x, by + (d ? 5 : 9)); g.stroke(); }
+    const bxp = bx + bw / 2 + Math.max(-30, Math.min(30, P.a / S.D2R)) / 30 * bw / 2; g.fillStyle = K.amber; g.beginPath(); g.arc(bxp, by, 8, 0, 7); g.fill();
+    g.fillStyle = K.white; g.font = "500 15px Mono"; g.fillText(`side bend ${Math.round(P.lean)}°`, bx, H - 38);
+    $("arm").textContent = `${Math.round(P.up * 168)}°`;
+  }
+  const reps_at = tt => Math.min(2, Math.floor(tt / 4)) + (tt >= 12 ? 1 : 0);
+  function ring(k) { const sw = $("sw"), c = 2 * Math.PI * 46; sw.style.strokeDasharray = c; sw.style.setProperty("--c", c); sw.style.strokeDashoffset = 0; $("num").textContent = k; const d = $("dial"); d.classList.remove("tick"); if (!S.still) { void d.offsetWidth; d.classList.add("tick"); } }
+  function setState(s) { state = s; $("dim").hidden = s !== "countdown"; const b = $("rb"); b.className = "rb " + (s === "recording" ? "rec" : s === "countdown" ? "cd" : ""); $("rbl").textContent = s === "recording" ? "Stop" : s === "countdown" ? "Cancel" : "Record";
+    $("status").className = "status" + (s === "recording" ? " live" : ""); $("st").textContent = s === "recording" ? "Recording" : s === "countdown" ? "Get ready" : "Ready"; }
+  setState(state); ring(n); $("clock").textContent = state === "countdown" ? "00:00.0" : tcode(t); $("reps").textContent = state === "recording" ? reps_at(t) : 0; draw();
+  if (S.still) return;
+  let t0 = performance.now();
+  const cd = () => { if (state !== "countdown") return; if (n > 1) { n--; ring(n); setTimeout(cd, 1000); } else { setState("recording"); t0 = performance.now(); loop(); } };
+  $("rb").onclick = () => { if (state === "idle") { setState("countdown"); n = 3; ring(3); setTimeout(cd, 1000); } else setState("idle"); };
+  function loop() { if (state !== "recording") return; t = (performance.now() - t0) / 1000; $("clock").textContent = tcode(t); $("reps").textContent = reps_at(t); draw(); if (t < 12) requestAnimationFrame(loop); else setState("idle"); }
+  ring(n); if (state === "recording") loop();
+}
+
+/* ---------------- desktop review ---------------- */
+function initRev() {
+  document.body.className = "rev"; $("vRev").hidden = false; $("sent").textContent = R.feedback.text;
+  const [t0, t1] = [F.start_s, F.end_s], FR = []; for (let x = t0; x <= t1 + 1e-6; x += 0.5) FR.push(+x.toFixed(1));
+  let t = +S.param("t", 6.0), playing = !S.reduced, last = performance.now(); const nearest = tt => FR.reduce((b, f, i) => Math.abs(f - tt) < Math.abs(FR[b] - tt) ? i : b, 0);
+  $("strip").innerHTML = FR.map((f, i) => `<div class="fr" role="option" data-i="${i}"><canvas></canvas><span>${f.toFixed(1)}</span></div>`).join("");
+  const thumbs = [...document.querySelectorAll(".fr canvas")];
+  function drawThumbs() { thumbs.forEach((c, i) => { const [W, H, g] = fit(c); g.fillStyle = K.screen; g.fillRect(0, 0, W, H); const s = H * 0.3, v = {cx: W * 0.5, hy: H * 0.74, s}, P = S.pose(FR[i]);
+      g.strokeStyle = "rgba(239,232,220,.2)"; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(v.cx, v.hy); g.lineTo(v.cx, v.hy - 1.4 * s); g.stroke(); g.setLineDash([]);
+      S.line(g, P, v, {color: K.white, width: 2, joints: null}); trunk(g, P, v, 2.5); }); }
+  function drawMon() {
+    const [W, H, g] = fit($("replay")); g.fillStyle = K.screen; g.fillRect(0, 0, W, H); const s = H * 0.3, v = {cx: W * 0.5, hy: H * 0.76, s}, P = S.pose(t);
+    g.strokeStyle = "rgba(239,232,220,.1)"; g.lineWidth = 1; for (const f of [1 / 3, 2 / 3]) { g.beginPath(); g.moveTo(W * f, 0); g.lineTo(W * f, H); g.moveTo(0, H * f); g.lineTo(W, H * f); g.stroke(); }
+    const h = S.at([0, 0], v), top = S.at([0, -1.5], v); g.save(); g.setLineDash([6, 6]); g.strokeStyle = "rgba(239,232,220,.4)"; g.lineWidth = 1.5; g.beginPath(); g.moveTo(h[0], h[1]); g.lineTo(top[0], top[1]); g.stroke(); g.restore();
+    S.line(g, P, v, {color: K.white, width: 5, joints: K.white}); trunk(g, P, v, 7);
+    g.strokeStyle = K.amber; g.lineWidth = 3; g.beginPath(); g.arc(h[0], h[1], 0.66 * s, -Math.PI / 2 + P.a, -Math.PI / 2); g.stroke();
+    g.fillStyle = K.amber; g.font = "500 26px Mono"; g.fillText(`${P.lean.toFixed(0)}°`, h[0] + (P.a < 0 ? -0.66 * s - 62 : 0.66 * s + 14), h[1] - 0.76 * s);
+    $("tc").innerHTML = `${(t % 60).toFixed(1).padStart(4, "0")} <span>/ 12.0</span>`;
+  }
+  const M = {l: 6, r: 6, t: 16, b: 22}; function drawTrace() { const r = $("trace").getBoundingClientRect(), w = r.width, h = r.height, tx = x => M.l + (w - M.l - M.r) * x / S.DUR, ty = d => M.t + (h - M.t - M.b) * (1 - d / 26);
+    let s = `<rect x="${tx(t0)}" y="${M.t}" width="${tx(t1) - tx(t0)}" height="${h - M.t - M.b}" fill="${K.amber}" opacity=".13"/><line x1="${M.l}" x2="${w - M.r}" y1="${ty(F.threshold)}" y2="${ty(F.threshold)}" stroke="${K.mute}" stroke-dasharray="4 4"/><text x="${tx(t0) + 6}" y="${ty(F.threshold) - 6}">threshold 14°</text>`;
+    s += `<polyline fill="none" stroke="${K.mute}" stroke-width="1.8" points="${S.timeline.map((d, i) => `${tx(i / 10).toFixed(1)},${ty(d).toFixed(1)}`).join(" ")}"/>`;
+    const a = Math.round(t0 * 10), b = Math.round(t1 * 10); s += `<polyline fill="none" stroke="${K.amber}" stroke-width="2.6" points="${S.timeline.slice(a, b + 1).map((d, i) => `${tx((a + i) / 10).toFixed(1)},${ty(d).toFixed(1)}`).join(" ")}"/>`;
+    s += `<line x1="${tx(t)}" x2="${tx(t)}" y1="${M.t - 4}" y2="${h - M.b}" stroke="${K.white}" stroke-width="1.5"/><circle cx="${tx(t)}" cy="${ty(S.pose(t).lean)}" r="4.5" fill="${K.amber}"/>`;
+    S.REPS.forEach((rp, i) => s += `<text x="${tx(rp.start_s) + 4}" y="${h - 6}">rep ${i + 1}</text>`); $("trace").innerHTML = s; }
+  function sel() { const i = nearest(t); thumbs.forEach((c, k) => c.parentElement.setAttribute("aria-selected", k === i)); }
+  const render = () => { drawMon(); drawTrace(); sel(); }; drawThumbs(); render(); addEventListener("resize", () => { drawThumbs(); render(); });
+  const setPlay = p => { playing = p; $("pp").className = "pp" + (p ? "" : " play"); $("pp").firstElementChild && 0; if (p) { last = performance.now(); requestAnimationFrame(step); } };
+  const stepTo = i => { t = FR[Math.max(0, Math.min(FR.length - 1, i))]; setPlay(false); render(); };
+  function step(now) { if (!playing) return; t += (now - last) / 1000 * 0.6; last = now; if (t > t1 + .3) t = t0; render(); requestAnimationFrame(step); }
+  $("pp").onclick = () => setPlay(!playing);
+  $("strip").addEventListener("pointerdown", e => { const f = e.target.closest(".fr"); if (f) stepTo(+f.dataset.i); });
+  $("strip").addEventListener("pointermove", e => { if (!e.buttons) return; const f = document.elementFromPoint(e.clientX, e.clientY)?.closest(".fr"); if (f) stepTo(+f.dataset.i); });
+  addEventListener("keydown", e => { if (e.code === "Space") { setPlay(!playing); e.preventDefault(); } else if (e.key === "ArrowRight") stepTo(nearest(t) + 1); else if (e.key === "ArrowLeft") stepTo(nearest(t) - 1); });
+  playing = playing && !S.still; setPlay(playing);
+}
+Promise.all(["500 15px Mono","500 22px Sans","400 16px Sans"].map(f => document.fonts.load(f))).then(() => view === "review" ? initRev() : initRec());
+</script>
+</body>
+</html>

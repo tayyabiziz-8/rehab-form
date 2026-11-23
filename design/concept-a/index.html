@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Motion Study (prototype)</title>
+<style>
+@font-face{font-family:"Plate";src:url(../fonts/NotoSerifDisplay-Bold.ttf);font-weight:700}
+@font-face{font-family:"Plate";src:url(../fonts/NotoSerifDisplay-Italic.ttf);font-style:italic;font-weight:400}
+@font-face{font-family:"Text";src:url(../fonts/NotoSerif-Regular.ttf);font-weight:400}
+@font-face{font-family:"Caption";src:url(../fonts/UbuntuSans.ttf);font-weight:100 800;font-stretch:75% 100%}
+:root{--paper:#E9E1CF;--paper-2:#DAD1BB;--paper-3:#CBC2AB;--ink:#1F1D1A;--ink-2:#5F5746;--cobalt:#1B3FD1;--ghost:#8FA0E6}
+*{box-sizing:border-box} html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font:16px/1.45 "Caption",system-ui,sans-serif}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:3px solid var(--cobalt);outline-offset:3px}
+.cap{font-family:"Caption";font-stretch:76%;font-weight:560;letter-spacing:.01em}
+[hidden]{display:none!important}
+
+/* ============ phone: recording ============ */
+body.rec{height:100dvh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden}
+.rtop{display:flex;align-items:baseline;justify-content:space-between;padding:10px 14px 6px}
+.rtop .ex{font-size:17px}
+.rtop .ex small{display:block;color:var(--ink-2);font-size:13px;font-weight:500}
+.rtop .clock{font:700 36px/1 "Plate";font-variant-numeric:tabular-nums}
+.plate{position:relative;margin:0 10px;min-height:0}
+.plate canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.veil{position:absolute;inset:0;background:rgba(233,225,207,.7);display:grid;place-items:center;overflow:hidden}
+.count{position:relative;width:1em;height:1em;font:700 min(112vw,60dvh)/1 "Plate";color:var(--cobalt);font-size:min(112vw,60dvh)}
+.count span{position:absolute;inset:0;display:grid;place-items:center;font-variant-numeric:tabular-nums}
+.count .e1{opacity:.34;transform:translateX(-.11em)} .count .e2{opacity:.15;transform:translateX(-.22em)}
+@keyframes arrive{from{transform:translateX(.5em);opacity:0}}
+.count.tick .n{animation:arrive .5s cubic-bezier(.2,.7,.2,1) both}
+.count.tick .e1{animation:arrive1 .62s cubic-bezier(.2,.7,.2,1) both} .count.tick .e2{animation:arrive2 .74s cubic-bezier(.2,.7,.2,1) both}
+@keyframes arrive1{from{transform:translateX(.5em);opacity:0}}
+@keyframes arrive2{from{transform:translateX(.5em);opacity:0}}
+.bar{display:grid;grid-template-columns:112px minmax(0,1fr);gap:10px;align-items:center;padding:10px 10px calc(10px + env(safe-area-inset-bottom));height:86px}
+.tally{height:100%;display:flex;flex-direction:column;justify-content:center;gap:4px}
+.tally svg{height:30px;width:100%} .tally .cap{font-size:14px;color:var(--ink-2)}
+.go{height:64px;background:var(--cobalt);color:var(--paper);display:flex;align-items:center;justify-content:center;gap:12px;font:600 24px/1 "Caption";font-stretch:88%;letter-spacing:.01em}
+.go i{width:16px;height:16px;background:var(--paper);display:block}
+.go.idle i{border-radius:50%}
+.go.cancel{background:transparent;color:var(--cobalt);box-shadow:inset 0 0 0 2.5px var(--cobalt)} .go.cancel i{background:var(--cobalt)}
+
+/* ============ desktop: review ============ */
+body.rev{min-height:100dvh}
+.sheet{max-width:1440px;margin:0 auto;padding:26px 36px 26px;display:grid;grid-template-columns:minmax(0,.86fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;column-gap:44px;row-gap:16px;height:100dvh}
+.sheet>header{grid-column:1/-1;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
+.sheet h1{margin:0;font:700 34px/1.05 "Plate"} .sheet header p{margin:4px 0 0;color:var(--ink-2);font-size:15px}
+.strict{display:flex;align-items:baseline;gap:22px;font-size:16px} .strict .cap{color:var(--ink-2);font-weight:500}
+.strict button{padding:4px 0 6px;border-bottom:3px solid transparent;font-weight:560} .strict button[aria-pressed="true"]{border-color:var(--cobalt);color:var(--cobalt)}
+.plate.big{margin:0;border:2px solid var(--ink);min-height:0;background:var(--paper-2)}
+.note{display:flex;flex-direction:column;gap:20px;min-height:0;padding-top:2px;overflow:hidden}
+.sent{text-align:left;font:400 25px/1.46 "Text";padding:4px 0 4px 20px;border-left:5px solid var(--cobalt);max-width:34em}
+.finding h2{margin:0 0 2px;font:600 18px/1.3 "Caption"} .finding .sub{color:var(--ink-2);font-size:15px}
+.ruler{display:block;width:100%;max-width:470px;height:74px;margin:8px 0 0}
+.ev{margin:0;font-size:15px;line-height:1.55;color:var(--ink);max-width:46em} .ev b{font-weight:600}
+.fine{margin:auto 0 0;font-size:13px;color:var(--ink-2)}
+.wave{grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:18px;align-items:stretch;min-height:0}
+.transport{display:flex;flex-direction:column;justify-content:space-between;padding:22px 0 30px;width:72px}
+.transport button{font-size:17px;font-weight:600;color:var(--cobalt);border-bottom:3px solid var(--cobalt);padding-bottom:3px;align-self:flex-start}
+.transport output{display:block;font:700 30px/1 "Plate";font-variant-numeric:tabular-nums} .transport output small{display:block;font:500 13px/1.3 "Caption";color:var(--ink-2);margin-top:3px}
+#wave{width:100%;height:178px;display:block;touch-action:none;cursor:ew-resize}
+#wave text{font-family:"Caption";font-stretch:76%;font-weight:560;fill:var(--ink-2);font-size:12.5px}
+@media (max-width:980px){.sheet{display:block;height:auto}.plate.big{height:70vw;margin:18px 0}.wave{margin-top:16px}}
+@media (prefers-reduced-motion:reduce){.count.tick *{animation:none!important}}
+</style>
+</head>
+<body>
+<!-- ================= recording (phone) ================= -->
+<div id="vRec" hidden style="display:contents">
+<header class="rtop"><div class="ex cap">Flank stretch<small class="cap">3 to 5 repetitions</small></div><div class="clock" id="clock">0:00</div></header>
+<main class="plate" id="plate"><canvas id="cam" aria-label="Camera view with framing marks and skeleton"></canvas>
+  <div class="veil" id="veil" hidden><div class="count" id="count" aria-live="assertive"><span class="e2">3</span><span class="e1">3</span><span class="n">3</span></div></div></main>
+<footer class="bar"><div class="tally"><svg id="tally" viewBox="0 0 96 30" aria-hidden="true"></svg><div class="cap" id="tallyCap">0 reps</div></div>
+  <button class="go" id="go"><i></i><span id="goLabel">Stop</span></button></footer>
+</div>
+
+<!-- ================= review (desktop) ================= -->
+<div id="vRev" hidden style="display:contents">
+<div class="sheet">
+  <header><div><h1>Flank stretch</h1><p>12.0 s, three repetitions, you were in view the whole time.</p></div>
+    <div class="strict" role="group" aria-label="Strictness"><span class="cap">Strictness</span><button aria-pressed="false">Strict</button><button aria-pressed="true">Standard</button><button aria-pressed="false">Lenient</button></div></header>
+  <section class="plate big" id="plateR"><canvas id="replay" aria-label="Skeleton replay of the selected repetition with three ghost poses"></canvas></section>
+  <aside class="note">
+    <button class="sent" id="sent" aria-pressed="true"></button>
+    <div class="finding"><h2>Body not tilted. Error, small.</h2><div class="sub">Sideways bend of your upper body</div>
+      <svg class="ruler" id="ruler" viewBox="0 0 470 74" role="img" aria-label="Measured 11 degrees, typical 22, threshold 14"></svg></div>
+    <p class="ev"><b>On people it was not tuned on:</b> catches 89% of clinician-marked errors and leaves 91% of correct sets alone. Agreement with clinician A is 0.51 and with B 0.54 (kappa); the two clinicians agree with each other at 0.43.</p>
+    <p class="fine">Measurements to support a clinician's judgement, not a diagnosis.</p>
+  </aside>
+  <section class="wave"><div class="transport"><button id="play">Play</button><output id="out">6.4 s<small>11° bend</small></output></div><svg id="wave" role="slider" aria-label="Scrub through the selected repetition" tabindex="0"></svg></section>
+</div>
+</div>
+
+<script src="../shared/synth.js"></script>
+<script>
+const S = window.SYNTH, R = S.RESULT, F = R.findings[0];
+const C = {paper: "#E9E1CF", p2: "#DAD1BB", p3: "#CBC2AB", ink: "#1F1D1A", ink2: "#5F5746", cobalt: "#1B3FD1", ghost: "#8FA0E6"};
+const view = S.param("view", "record"), dpr = Math.min(window.devicePixelRatio || 1, 3);
+const fit = c => { const r = c.getBoundingClientRect(); c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr); const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); return [r.width, r.height, g]; };
+const fmt = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+const tag = (g, text, x, y, o = {}) => { g.save(); g.font = `560 ${o.size || 13}px Caption`; g.fontStretch = "76%"; const w = g.measureText(text).width + 12, h = (o.size || 13) + 9;
+  const x0 = o.right ? x - w : x; g.fillStyle = C.paper; g.fillRect(x0, y - h / 2, w, h); g.strokeStyle = C.ink; g.lineWidth = 1; g.strokeRect(x0 + .5, y - h / 2 + .5, w - 1, h - 1);
+  g.fillStyle = o.color || C.cobalt; g.textBaseline = "middle"; g.fillText(text, x0 + 6, y + 1); g.restore(); };
+function arc(g, v, P, r, label, size) {   // plumb line, lean arc and its value, drawn at the hip centre
+  const h = S.at([0, 0], v), top = S.at([0, -1.45], v); g.save(); g.setLineDash([5, 5]); g.strokeStyle = C.ink2; g.lineWidth = 1.5; g.beginPath(); g.moveTo(h[0], h[1]); g.lineTo(top[0], top[1]); g.stroke(); g.setLineDash([]);
+  if (P.lean > 0.6) { g.strokeStyle = C.cobalt; g.lineWidth = 3; g.beginPath(); g.arc(h[0], h[1], r * v.s, -Math.PI / 2 + P.a, -Math.PI / 2); g.stroke();
+    const m = -Math.PI / 2 + P.a / 2; if (label) tag(g, label, h[0] + Math.cos(m) * (r + .22) * v.s - 6, h[1] + Math.sin(m) * (r + .22) * v.s - 4, {right: true, size}); }
+  g.restore();
+}
+
+/* ---------------- recording view ---------------- */
+function initRec() {
+  document.body.className = "rec"; $("vRec").hidden = false; const cam = $("cam"); let state = S.param("state", "recording"), n = +S.param("n", 3), t = +S.param("t", 10.6);
+  const tallyEl = $("tally");
+  function tally(c) { let s = ""; for (let i = 0; i < c; i++) { const x = 8 + (i % 4) * 14 + Math.floor(i / 4) * 0; if (i % 5 === 4) s += `<line x1="4" y1="24" x2="${8 + 3 * 14 + 8}" y2="6" stroke="#1B3FD1" stroke-width="3" stroke-linecap="round"/>`; else s += `<line x1="${x}" y1="5" x2="${x}" y2="25" stroke="#1B3FD1" stroke-width="3.5" stroke-linecap="round"/>`; } tallyEl.innerHTML = s; $("tallyCap").textContent = `${c} rep${c === 1 ? "" : "s"}`; }
+  function draw() {
+    const [W, H, g] = fit(cam); g.fillStyle = C.p3; g.fillRect(0, 0, W, H);
+    const s = H * 0.8 / 3.6, v = {cx: W * 0.5, hy: H * 0.1 + 2.05 * s, s};
+    g.strokeStyle = "rgba(31,29,26,.2)"; g.lineWidth = 1; const step = s * 0.5; for (let y = v.hy % step; y < H; y += step) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+    g.strokeStyle = "rgba(31,29,26,.42)"; g.lineWidth = 1.5; g.beginPath(); g.moveTo(0, v.hy); g.lineTo(W, v.hy); g.stroke();
+    const P = S.pose(state === "countdown" ? 0 : t);
+    S.line(g, P, v, {color: "#2A2621", width: s * 0.075, fillHead: "#2A2621"});     // the person, as photographed
+    S.line(g, P, v, {left: C.cobalt, right: C.cobalt, width: 3, joints: C.paper});
+    if (state === "recording") { arc(g, v, P, 0.6, null, 13);
+      const call = (anchor, y, text) => { g.save(); g.strokeStyle = C.cobalt; g.lineWidth = 1.3; g.beginPath(); g.moveTo(anchor[0], anchor[1]); g.lineTo(W - 18 - 4, y); g.stroke(); g.restore(); tag(g, text, W - 18, y, {right: true, size: 14}); };
+      call(S.at([P.Sc[0] / 2, P.Sc[1] / 2], v), v.hy - 0.5 * s, `side bend ${Math.round(P.lean)}°`); call(S.at(P.LW, v), S.at(P.LW, v)[1] - 0.1 * s, `arm ${Math.round(P.up * 168)}°`); }
+    // framing marks: crop corners, head and hip guides
+    g.strokeStyle = C.cobalt; g.lineWidth = 2.5; const m = 12, L = 24; for (const [x, y, dx, dy] of [[m, m, 1, 1], [W - m, m, -1, 1], [m, H - m, 1, -1], [W - m, H - m, -1, -1]]) { g.beginPath(); g.moveTo(x, y + dy * L); g.lineTo(x, y); g.lineTo(x + dx * L, y); g.stroke(); }
+    g.lineWidth = 1.5; for (const [y, name] of [[H * 0.1 + 0.2 * s, "head"], [v.hy, "hips"]]) { g.beginPath(); g.moveTo(m + 4, y); g.lineTo(m + 26, y); g.moveTo(W - m - 26, y); g.lineTo(W - m - 4, y); g.stroke(); g.fillStyle = C.ink2; g.font = "560 12px Caption"; g.fontStretch = "76%"; g.fillText(name, m + 30, y + 4); }
+  }
+  let t0 = performance.now(), reps = 0;
+  const reps_at = tt => Math.min(2, Math.floor(tt / 4)) + (tt >= 12 ? 1 : 0);
+  function setState(s) { state = s; $("veil").hidden = s !== "countdown"; const go = $("go"); go.className = "go " + (s === "countdown" ? "cancel" : s === "idle" ? "idle" : ""); $("goLabel").textContent = s === "countdown" ? "Cancel" : s === "idle" ? "Record" : "Stop"; }
+  function setCount(k) { n = k; const c = $("count"); c.querySelectorAll("span").forEach(x => x.textContent = k); if (!S.still) { c.classList.remove("tick"); void c.offsetWidth; c.classList.add("tick"); } }
+  setState(state); setCount(n); tally(state === "recording" ? reps_at(t) : 0); $("clock").textContent = fmt(state === "countdown" ? 0 : t); draw();
+  if (S.still) return;
+  const tickCd = () => { if (state !== "countdown") return; if (n > 1) { setCount(n - 1); setTimeout(tickCd, 1000); } else { setState("recording"); t0 = performance.now(); loop(); } };
+  $("go").onclick = () => { if (state === "recording") setState("idle"); else if (state === "countdown") setState("idle"); else { setState("countdown"); setCount(3); setTimeout(tickCd, 1000); } };
+  function loop() { if (state !== "recording") return; t = ((performance.now() - t0) / 1000) * 1; $("clock").textContent = fmt(t); tally(reps_at(t)); draw(); if (t < 12) requestAnimationFrame(loop); else setState("idle"); }
+  if (state === "recording") loop();
+}
+
+/* ---------------- review view ---------------- */
+function initRev() {
+  document.body.className = "rev"; $("vRev").hidden = false;
+  const plate = $("replay"), wave = $("wave"), [t0, t1] = [F.start_s, F.end_s]; let t = +S.param("t", 6.4), playing = !S.reduced, last = performance.now(), W, H, gw, gh;
+  $("sent").textContent = R.feedback.text;
+  // ruler: measured, typical, threshold on one 0 to 30 degree scale
+  const X = d => 12 + d / 30 * 446; let r = `<line x1="12" y1="46" x2="458" y2="46" stroke="${C.ink}" stroke-width="2"/>`;
+  for (let d = 0; d <= 30; d += 5) r += `<line x1="${X(d)}" y1="46" x2="${X(d)}" y2="${d % 10 ? 51 : 54}" stroke="${C.ink}" stroke-width="1.5"/>` + (d % 10 === 0 ? `<text x="${X(d)}" y="70" text-anchor="middle" font-family="Caption" font-size="12.5" font-weight="560" style="font-stretch:76%" fill="${C.ink2}">${d}°</text>` : "");
+  r += `<line x1="${X(F.threshold)}" y1="14" x2="${X(F.threshold)}" y2="46" stroke="${C.ink}" stroke-width="1.5" stroke-dasharray="3 3"/><text x="${X(F.threshold) + 5}" y="22" font-family="Caption" font-size="12.5" font-weight="560" style="font-stretch:76%" fill="${C.ink2}">threshold 14°</text>`;
+  r += `<path d="M${X(11)} 46 l-9 -16 h18 z" fill="${C.cobalt}"/><text x="${X(11) - 12}" y="36" text-anchor="end" font-family="Plate" font-weight="700" font-size="20" fill="${C.cobalt}">11°</text>`;
+  r += `<path d="M${X(22)} 46 l-9 -16 h18 z" fill="${C.paper}" stroke="${C.ink}" stroke-width="2"/><text x="${X(22) + 14}" y="42" font-family="Caption" font-size="13" font-weight="600" style="font-stretch:76%" fill="${C.ink}">22° typical</text>`; $("ruler").innerHTML = r;
+
+  function drawPlate() {
+    [W, H, g] = fit(plate); const g2 = g; g2.fillStyle = C.p2; g2.fillRect(0, 0, W, H);
+    const s = H * 0.3, v = {cx: W * 0.45, hy: H * 0.74, s};
+    g2.strokeStyle = "rgba(31,29,26,.17)"; g2.lineWidth = 1; const step = s * .25; for (let y = v.hy % step; y < H; y += step) { g2.beginPath(); g2.moveTo(0, y); g2.lineTo(W, y); g2.stroke(); }
+    g2.strokeStyle = "rgba(31,29,26,.5)"; g2.lineWidth = 1.5; g2.beginPath(); g2.moveTo(0, v.hy); g2.lineTo(W, v.hy); g2.stroke();
+    S.ghostTimes.forEach((gt, i) => { const P = S.pose(gt); S.line(g2, P, v, {color: C.cobalt, width: 2.4, alpha: .34}); const h = S.at(P.head, v), y2 = h[1] - 0.34 * s - i * 0.2 * s;
+      g2.save(); g2.strokeStyle = C.cobalt; g2.globalAlpha = .6; g2.lineWidth = 1.2; g2.beginPath(); g2.moveTo(h[0], h[1] - 0.2 * s); g2.lineTo(h[0], y2); g2.stroke(); g2.restore();
+      g2.fillStyle = C.cobalt; g2.font = `italic 400 ${Math.round(s * 0.17)}px Plate`; g2.textAlign = "center"; g2.fillText("abc"[i], h[0], y2 - 4); g2.textAlign = "left"; });
+    const P = S.pose(t); arc(g2, v, P, 0.62, `${P.lean.toFixed(0)}°`, 17);
+    S.line(g2, P, v, {color: C.ink, width: 4.5, joints: C.cobalt});
+    g2.fillStyle = C.ink2; g2.font = "560 14px Caption"; g2.fontStretch = "76%"; g2.fillText(`selected repetition, ${t0.toFixed(1)} to ${t1.toFixed(1)} s`, 16, H - 16);
+  }
+  const M = {l: 46, r: 12, t: 26, b: 34}; let wW, wH;
+  const tx = tt => M.l + (wW - M.l - M.r) * tt / S.DUR, ty = d => M.t + (wH - M.t - M.b) * (1 - d / 26), tOf = x => (x - M.l) / (wW - M.l - M.r) * S.DUR;
+  function drawWave() {
+    const r = wave.getBoundingClientRect(); wW = r.width; wH = r.height; let s = `<rect x="${tx(t0)}" y="${M.t}" width="${tx(t1) - tx(t0)}" height="${wH - M.t - M.b}" fill="${C.cobalt}" opacity=".1"/>`;
+    S.REPS.forEach((rp, i) => { s += `<line x1="${tx(rp.start_s)}" x2="${tx(rp.start_s)}" y1="${M.t}" y2="${wH - M.b + 6}" stroke="${C.ink}" stroke-width="1" opacity=".35"/><text x="${tx(rp.start_s) + 6}" y="${wH - 8}">repetition ${i + 1}</text>`; });
+    for (const d of [0, 10, 20]) s += `<line x1="${M.l}" x2="${wW - M.r}" y1="${ty(d)}" y2="${ty(d)}" stroke="${C.ink}" stroke-width="1" opacity="${d ? .16 : .55}"/><text x="${M.l - 8}" y="${ty(d) + 4}" text-anchor="end">${d}°</text>`;
+    s += `<line x1="${M.l}" x2="${wW - M.r}" y1="${ty(F.threshold)}" y2="${ty(F.threshold)}" stroke="${C.ink}" stroke-width="1.3" stroke-dasharray="4 4"/><text x="${wW - M.r - 4}" y="${ty(F.threshold) - 6}" text-anchor="end">threshold 14°</text>`;
+    s += `<line x1="${M.l}" x2="${wW - M.r}" y1="${ty(22)}" y2="${ty(22)}" stroke="${C.ink}" stroke-width="1.3" stroke-dasharray="1.5 4"/><text x="${wW - M.r - 4}" y="${ty(22) - 6}" text-anchor="end">typical correct repetition 22°</text>`;
+    const pts = S.timeline.map((d, i) => `${tx(i / 10).toFixed(1)},${ty(d).toFixed(1)}`), a = Math.round(t0 * 10), b = Math.round(t1 * 10);
+    s += `<polyline points="${pts.join(" ")}" fill="none" stroke="${C.ink}" stroke-width="2" stroke-linejoin="round"/><polyline points="${pts.slice(a, b + 1).join(" ")}" fill="none" stroke="${C.cobalt}" stroke-width="3.5" stroke-linejoin="round"/>`;
+    S.ghostTimes.forEach((gt, i) => { const x = tx(gt), y = ty(S.pose(gt).lean); s += `<path d="M${x} ${y + 9} l-6 11 h12 z" fill="${C.cobalt}" opacity=".7"/><text x="${x}" y="${y + 34}" text-anchor="middle" style="font-family:Plate;font-style:italic;font-size:17px;font-stretch:100%;font-weight:400;fill:${C.cobalt}">${"abc"[i]}</text>`; });
+    for (let x = 0; x <= 12; x += 2) s += `<text x="${tx(x)}" y="${M.t - 10}" text-anchor="middle">${x} s</text>`;
+    const px = tx(t), py = ty(S.pose(t).lean); s += `<line x1="${px}" x2="${px}" y1="${M.t - 2}" y2="${wH - M.b}" stroke="${C.cobalt}" stroke-width="2"/><circle cx="${px}" cy="${py}" r="6.5" fill="${C.paper}" stroke="${C.cobalt}" stroke-width="3"/>`;
+    wave.innerHTML = s; $("out").innerHTML = `${t.toFixed(1)} s<small>${S.pose(t).lean.toFixed(0)}° bend</small>`; wave.setAttribute("aria-valuenow", t.toFixed(1));
+  }
+  const render = () => { drawPlate(); drawWave(); }; render(); addEventListener("resize", render);
+  const seek = x => { t = Math.min(t1, Math.max(t0, tOf(x))); playing = false; $("play").textContent = "Play"; render(); };
+  wave.addEventListener("pointerdown", e => { wave.setPointerCapture(e.pointerId); seek(e.clientX - wave.getBoundingClientRect().left); });
+  wave.addEventListener("pointermove", e => { if (e.buttons) seek(e.clientX - wave.getBoundingClientRect().left); });
+  wave.addEventListener("keydown", e => { if (e.key === "ArrowRight" || e.key === "ArrowLeft") { t = Math.min(t1, Math.max(t0, t + (e.key === "ArrowRight" ? .1 : -.1))); playing = false; render(); e.preventDefault(); } });
+  $("play").onclick = () => { playing = !playing; last = performance.now(); $("play").textContent = playing ? "Pause" : "Play"; if (playing) requestAnimationFrame(step); };
+  $("play").textContent = playing && !S.still ? "Pause" : "Play"; playing = playing && !S.still;
+  function step(now) { if (!playing) return; t += (now - last) / 1000 * 0.6; last = now; if (t > t1 + .4) t = t0; render(); requestAnimationFrame(step); }
+  if (playing) requestAnimationFrame(step);
+}
+function $(id) { return document.getElementById(id); }
+Promise.all(["560 13px Caption","700 20px Plate","italic 400 20px Plate","400 16px Text"].map(f => document.fonts.load(f))).then(() => view === "review" ? initRev() : initRec());
+</script>
+</body>
+</html>
